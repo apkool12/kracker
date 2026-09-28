@@ -639,6 +639,7 @@ export class Bullet {
           radius: cfg.explodeRadius,
           damage: cfg.damage,
           ownerId,
+          hitIds: this.sprite?.getData?.("__hitIds"),
         });
       }
     } catch {}
@@ -1156,7 +1157,6 @@ export class ShootingSystem {
   private weaponConfig: Required<WeaponConfig>;
   private state: ShootingState;
   private bulletGroup!: Phaser.Physics.Arcade.Group;
-  private muzzleFlashConfig: MuzzleFlashConfig;
   private onShotCallback?: (recoil: number) => void;
   private maxBullets: number = 30;
   private fireIntervalAddMs: number = 0;
@@ -1470,4 +1470,6 @@ export class ShootingSystem {
   public getAllBullets(): Bullet[] {
     return Array.from(this.bullets.values());
   }
+
+  private muzzleFlashConfig: MuzzleFlashConfig;
 }

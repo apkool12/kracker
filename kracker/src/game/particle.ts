@@ -4,8 +4,6 @@ import { createGradientColors } from "./render/character.core";
 
 export class ParticleSystem {
   readonly scene: Phaser.Scene;
-  private isEnabled: boolean = true;
-  private texturesInitialized: boolean = false;
 
   constructor(scene: Phaser.Scene, enableMouseListener: boolean = true) {
     this.scene = scene;
@@ -553,6 +551,9 @@ export class ParticleSystem {
     this.texturesInitialized = false;
     // 이벤트 리스너 정리는 씬에서 자동으로 처리됨
   }
+
+  private isEnabled: boolean = true;
+  private texturesInitialized: boolean = false;
 }
 
 // TypeScript 모듈 오류 해결을 위한 빈 export

@@ -1026,9 +1026,16 @@ function endRound(io: Server, room: Room) {
 
 // 최종 결과 방송 후 방을 대기 상태로 되돌린다 (재시작/재입장 가능)
 function finishGame(room: Room) {
+  // 승자: 목표 승수 달성자, 없으면(상대 이탈 등) 남아있는 플레이어 중 최다 승
+  const players = Object.values(room.players);
+  const top = Math.max(0, ...players.map((p) => p.wins || 0));
+  const winnerIds = players
+    .filter((p) => (p.wins || 0) >= WINS_TO_FINAL || (top < WINS_TO_FINAL && (p.wins || 0) === top))
+    .map((p) => p.id);
   io.to(room.roomId).emit("game:final", {
     round: room.currentRound,
     players: buildRoundResultPayload(room),
+    winnerIds,
   });
   room.status = "waiting";
   delete room.phase;

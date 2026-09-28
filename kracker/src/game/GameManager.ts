@@ -15,7 +15,6 @@ export default class GameManager {
   private parentElement: HTMLElement;
   private game: Phaser.Game | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private gameScene: GameScene | null = null;
 
   // 기준 해상도 설정 (게임 월드의 기본 크기)
   private readonly BASE_WIDTH = 1920;
@@ -367,4 +366,6 @@ export default class GameManager {
   getGame(): Phaser.Game | null {
     return this.game;
   }
+
+  private gameScene: GameScene | null = null;
 }

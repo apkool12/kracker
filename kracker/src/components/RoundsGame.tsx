@@ -227,7 +227,7 @@ const GameCanvas = styled.div`
   }
 `;
 
-const LoadingOverlay = styled.div<{ isVisible: boolean }>`
+const LoadingOverlay = styled.div<{ $isVisible: boolean }>`
   position: absolute;
   top: 0;
   left: 0;
@@ -242,8 +242,8 @@ const LoadingOverlay = styled.div<{ isVisible: boolean }>`
   font-family: Arial, sans-serif;
   z-index: 1000;
 
-  opacity: ${(props) => (props.isVisible ? 1 : 0)};
-  visibility: ${(props) => (props.isVisible ? "visible" : "hidden")};
+  opacity: ${(props) => (props.$isVisible ? 1 : 0)};
+  visibility: ${(props) => (props.$isVisible ? "visible" : "hidden")};
   transition: opacity 0.3s ease-in-out;
 `;
 
@@ -387,6 +387,7 @@ const RoundsGame: React.FC = () => {
     React.useState(false);
   const [isFinalResultModalOpen, setIsFinalResultModalOpen] =
     React.useState(false);
+  const [finalResult, setFinalResult] = React.useState<"WIN" | "LOSE" | undefined>();
   const [isAugmentPhaseActive, setIsAugmentPhaseActive] = React.useState(false);
   const hasCompletedRef = React.useRef(false);
   
@@ -645,7 +646,9 @@ const RoundsGame: React.FC = () => {
       hasCompletedRef.current = false;
     };
 
-    const onFinal = (data: { round: number; players: PlayerRoundResult[] }) => {
+    const onFinal = (data: { round: number; players: PlayerRoundResult[]; winnerIds?: string[] }) => {
+      const myId = gameState?.myPlayerId;
+      setFinalResult(myId && data.winnerIds?.includes(myId) ? "WIN" : "LOSE");
       setShowRoundModal(false);
       setIsAugmentSelectModalOpen(false);
       setIsFinalResultModalOpen(true);
@@ -703,7 +706,7 @@ const RoundsGame: React.FC = () => {
       socket.off("augment:complete", onAugmentComplete);
       socket.off("augment:snapshot", onAugmentSnapshot);
     };
-  }, [isAugmentPhaseActive]);
+  }, [isAugmentPhaseActive, gameState?.myPlayerId]);
 
   const handleOpenFinalResult = () => {
     setShowFinalModal(true);
@@ -749,7 +752,7 @@ const RoundsGame: React.FC = () => {
 
       {/* 증강 디버그 패널 제거 */}
 
-      <LoadingOverlay isVisible={isLoading}>
+      <LoadingOverlay $isVisible={isLoading}>
         <div>
           <div>🎮 게임 로딩 중...</div>
           <div style={{ fontSize: "14px", marginTop: "10px", opacity: 0.7 }}>
@@ -827,7 +830,7 @@ const RoundsGame: React.FC = () => {
       {/* ★ 최종 결과 모달 */}
       <FinalResultModal
         isOpen={isFinalResultModalOpen}
-        result={undefined}
+        result={finalResult}
         myWins={(() => {
           const myId = gameState?.myPlayerId;
           if (!myId) return undefined;

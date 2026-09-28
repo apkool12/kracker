@@ -6,7 +6,6 @@ import {
   DEFAULT_SHADOW_CONFIG,
   CameraInfo,
   LightConfig,
-  ShadowPolygon,
 } from "./ShadowTypes";
 
 export class ShadowRenderer {

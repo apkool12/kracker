@@ -877,48 +877,6 @@ export default class MapRenderer {
     console.log("🌿 정글 요소들 생성됨");
   }
 
-  /** 🌿 나뭇잎들 추가 */
-  private addJungleLeaves(width: number, height: number): void {
-    const leafCount = 15;
-    const leafColors = [
-      0x2d5a2d, // 진한 초록
-      0x3a6b3a, // 중간 초록
-      0x4a7c4a, // 밝은 초록
-      0x5a8d5a, // 연한 초록
-      0x1a4a1a, // 어두운 초록
-    ];
-
-    for (let i = 0; i < leafCount; i++) {
-      const x = Math.random() * width;
-      const y = Math.random() * (height * 0.7); // 상단 70% 영역에만
-      const size = Math.random() * 40 + 20;
-      const color = leafColors[Math.floor(Math.random() * leafColors.length)];
-      const alpha = Math.random() * 0.4 + 0.2;
-      const rotation = Math.random() * Math.PI * 2;
-
-      const leaf = this.scene.add.graphics();
-      leaf.setDepth(-250);
-      leaf.setScrollFactor(0.1); // 패럴랙스 효과
-
-      // 나뭇잎 모양 그리기 (타원형)
-      leaf.fillStyle(color, alpha);
-      leaf.fillEllipse(x, y, size, size * 0.6);
-
-      // 나뭇잎 테두리
-      leaf.lineStyle(1, color, alpha * 0.5);
-      leaf.strokeEllipse(x, y, size, size * 0.6);
-
-      // 나뭇잎 중앙 줄기
-      leaf.lineStyle(1, color, alpha * 0.8);
-      leaf.beginPath();
-      leaf.moveTo(x, y - size * 0.3);
-      leaf.lineTo(x, y + size * 0.3);
-      leaf.strokePath();
-
-      this.jungleElements.push(leaf);
-    }
-  }
-
   /** 🌿 덩굴들 추가 */
   private addJungleVines(width: number, height: number): void {
     const vineCount = 8;
@@ -1017,6 +975,49 @@ export default class MapRenderer {
       }
 
       this.jungleElements.push(decoration);
+    }
+  }
+
+
+  /** 🌿 나뭇잎들 추가 */
+  private addJungleLeaves(width: number, height: number): void {
+    const leafCount = 15;
+    const leafColors = [
+      0x2d5a2d, // 진한 초록
+      0x3a6b3a, // 중간 초록
+      0x4a7c4a, // 밝은 초록
+      0x5a8d5a, // 연한 초록
+      0x1a4a1a, // 어두운 초록
+    ];
+
+    for (let i = 0; i < leafCount; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * (height * 0.7); // 상단 70% 영역에만
+      const size = Math.random() * 40 + 20;
+      const color = leafColors[Math.floor(Math.random() * leafColors.length)];
+      const alpha = Math.random() * 0.4 + 0.2;
+      const rotation = Math.random() * Math.PI * 2;
+
+      const leaf = this.scene.add.graphics();
+      leaf.setDepth(-250);
+      leaf.setScrollFactor(0.1); // 패럴랙스 효과
+
+      // 나뭇잎 모양 그리기 (타원형)
+      leaf.fillStyle(color, alpha);
+      leaf.fillEllipse(x, y, size, size * 0.6);
+
+      // 나뭇잎 테두리
+      leaf.lineStyle(1, color, alpha * 0.5);
+      leaf.strokeEllipse(x, y, size, size * 0.6);
+
+      // 나뭇잎 중앙 줄기
+      leaf.lineStyle(1, color, alpha * 0.8);
+      leaf.beginPath();
+      leaf.moveTo(x, y - size * 0.3);
+      leaf.lineTo(x, y + size * 0.3);
+      leaf.strokePath();
+
+      this.jungleElements.push(leaf);
     }
   }
 }

@@ -53,12 +53,6 @@ export class DebugManager {
     });
   }
 
-  // 키 바인딩 설정 - 제거됨
-  private setupKeyBindings(): void {
-    // 디버그 키 바인딩이 제거됨
-    return;
-  }
-
   // 디버그 기능들
   public toggleDebugPanel(): void {
     const isVisible = debugConfig.toggleDebugPanel();
@@ -75,53 +69,6 @@ export class DebugManager {
 
     // 설정 변경 후 다시 동기화
     this.syncLoggerWithConfig();
-  }
-
-  private cycleLogLevel(): void {
-    const newLevel = debugConfig.cycleLogLevel();
-    logger.setLogLevel(newLevel);
-    logger.info(
-      LogCategory.GAME,
-      `Log level changed to: ${LogLevel[newLevel]}`
-    );
-  }
-
-  private toggleSlowMotion(): void {
-    const config = debugConfig.get();
-    const isSlowMotion = debugConfig.toggleSlowMotion();
-
-    if (this.scene) {
-      const factor = isSlowMotion ? config.game.slowMotionFactor : 1.0;
-      this.scene.physics.world.timeScale = factor;
-      this.scene.time.timeScale = factor;
-    }
-
-    logger.info(
-      LogCategory.GAME,
-      `Slow motion: ${isSlowMotion ? "ON" : "OFF"}`
-    );
-  }
-
-  private takeScreenshot(): void {
-    if (!this.scene) return;
-
-    try {
-      // Phaser의 스크린샷 기능 사용
-      this.scene.game.renderer.snapshot(
-        (image: HTMLImageElement | Phaser.Display.Color) => {
-          if (image instanceof HTMLImageElement) {
-            const link = document.createElement("a");
-            link.download = `game-screenshot-${Date.now()}.png`;
-            link.href = image.src;
-            link.click();
-
-            logger.info(LogCategory.GAME, "Screenshot taken");
-          }
-        }
-      );
-    } catch (error) {
-      logger.error(LogCategory.GAME, "Failed to take screenshot", error);
-    }
   }
 
   // 설정 업데이트 메서드들

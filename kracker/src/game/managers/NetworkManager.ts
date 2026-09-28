@@ -49,7 +49,6 @@ interface GameEvent {
 }
 
 export class NetworkManager {
-  private scene: any;
   private myPlayerId: string | null = null;
   private roomId: string | null = null;
   private isConnected: boolean = false;
@@ -607,4 +606,6 @@ export class NetworkManager {
       },
     };
   }
+
+  private scene: any;
 }

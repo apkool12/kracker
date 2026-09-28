@@ -6,9 +6,6 @@ import { LogCategory } from "../debug/Logger";
 import { INPUT_CONSTANTS } from "../config/GameConstants";
 import {
   keyBindingManager,
-  MAP_KEYS,
-  COLOR_KEYS,
-  SHADOW_KEYS,
   generateAllHelpTexts,
 } from "../config/KeyBindings";
 
@@ -79,118 +76,6 @@ export class InputManager {
       LogCategory.INPUT,
       "키 바인딩 설정 완료 - 게임 필수 기능만 유지"
     );
-  }
-
-  // 🆕 그림자 키 설정 - 제거됨
-  private setupShadowKeys(): void {
-    // 모든 그림자 키 설정 제거됨
-  }
-
-  // 🆕 키 등록 헬퍼
-  private registerKey(
-    keyCode: string,
-    handler: () => void | Promise<void>
-  ): void {
-    if (!this.scene.input.keyboard) return;
-
-    this.scene.input.keyboard.on(`keydown-${keyCode}`, async () => {
-      if (!this.isEnabled) return;
-
-      // 키 반복 방지
-      if (this.config.preventKeyRepeat && this.isKeyRepeating(keyCode)) {
-        return;
-      }
-
-      this.markKeyPressed(keyCode);
-
-      try {
-        await handler();
-      } catch (error) {
-        Debug.log.error(
-          LogCategory.INPUT,
-          `키 핸들러 에러 (${keyCode})`,
-          error
-        );
-      }
-    });
-
-    // 키 업 이벤트로 반복 상태 해제
-    this.scene.input.keyboard.on(`keyup-${keyCode}`, () => {
-      this.markKeyReleased(keyCode);
-    });
-  }
-
-  // 🆕 키 반복 방지 로직
-  private isKeyRepeating(keyCode: string): boolean {
-    if (!this.config.preventKeyRepeat) return false;
-
-    const now = Date.now();
-    const lastPressed = this.keyTimers.get(keyCode);
-
-    return lastPressed ? now - lastPressed < this.config.keyRepeatDelay : false;
-  }
-
-  private markKeyPressed(keyCode: string): void {
-    this.pressedKeys.add(keyCode);
-    this.keyTimers.set(keyCode, Date.now());
-  }
-
-  private markKeyReleased(keyCode: string): void {
-    this.pressedKeys.delete(keyCode);
-  }
-
-  // 🆕 핸들러 메서드들
-  private async handleMapChange(mapKey: string): Promise<void> {
-    Debug.log.info(LogCategory.INPUT, `맵 전환 요청: ${mapKey}`);
-    if (this.callbacks.onMapChange) {
-      await this.callbacks.onMapChange(mapKey);
-    }
-  }
-
-  private handleColorChange(color: string): void {
-    Debug.log.debug(LogCategory.INPUT, `색상 변경 요청: ${color}`);
-    if (this.callbacks.onColorChange) {
-      this.callbacks.onColorChange(color);
-    }
-  }
-
-  private handleShadowAngleChange(angle: number): void {
-    Debug.log.debug(LogCategory.SHADOW, `그림자 각도 변경: ${angle}도`);
-    if (this.callbacks.onShadowAngleChange) {
-      this.callbacks.onShadowAngleChange(angle);
-    }
-    this.callbacks.onUIUpdate?.();
-  }
-
-  private handleShadowAnimate(): void {
-    Debug.log.info(LogCategory.SHADOW, "그림자 애니메이션 시작");
-    if (this.callbacks.onShadowAnimate) {
-      this.callbacks.onShadowAnimate();
-    }
-  }
-
-  private handleShadowToggle(): void {
-    Debug.log.info(LogCategory.SHADOW, "그림자 토글");
-    if (this.callbacks.onShadowToggle) {
-      this.callbacks.onShadowToggle();
-    }
-    this.callbacks.onUIUpdate?.();
-  }
-
-  private handleShadowPreset(preset: string): void {
-    Debug.log.info(LogCategory.SHADOW, `그림자 프리셋: ${preset}`);
-    if (this.callbacks.onShadowPreset) {
-      this.callbacks.onShadowPreset(preset);
-    }
-    this.callbacks.onUIUpdate?.();
-  }
-
-  private handleShadowTest(testType: string): void {
-    Debug.log.debug(LogCategory.SHADOW, `그림자 테스트: ${testType}`);
-    if (this.callbacks.onShadowTest) {
-      this.callbacks.onShadowTest(testType);
-    }
-    this.callbacks.onUIUpdate?.();
   }
 
   // 콜백 등록 메서드들 (기존과 동일)

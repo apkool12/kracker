@@ -4,10 +4,6 @@ import {
   BrowserRouter,
   Routes,
   Route,
-  Link,
-  NavLink,
-  Router,
-  Navigate,
 } from "react-router-dom";
 import "./App.css";
 import Home from "./pages/Home";
@@ -20,8 +16,9 @@ function App() {
 
   // 페이지 로드 시 닉네임 확인
   useEffect(() => {
+    // 홈에서는 닉네임 확인용으로 항상, 로비/게임 화면에서는 닉네임이 없을 때만 띄운다
     const savedNickname = localStorage.getItem("userNickname");
-    setShowModal(true);
+    setShowModal(!savedNickname || window.location.pathname === "/");
   }, []);
   return (
     <BrowserRouter>
