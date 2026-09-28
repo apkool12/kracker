@@ -68,7 +68,19 @@ const BASE_MAX_HEALTH = 100;
 type AugmentDef = {
   id: string;
   effects?: {
-    bullet?: { damageMul?: number; damageAdd?: number };
+    bullet?: {
+      damageMul?: number;
+      damageAdd?: number;
+      poisonDps?: number;
+      poisonTicks?: number;
+      poisonIntervalMs?: number;
+      parasiteDps?: number;
+      parasiteTicks?: number;
+      slowOnHitMs?: number;
+      slowMul?: number;
+      stunMs?: number;
+      knockbackMul?: number;
+    };
     player?: { maxHealthDelta?: number };
   };
 };
@@ -673,61 +685,8 @@ io.on("connection", (socket) => {
     const hx = num(hit.x) ?? target.x ?? 0;
     const hy = num(hit.y) ?? target.y ?? 0;
 
-    if (!isSelfHit && newHealth > 0) {
-      // 독걸려랑: DoT (초당 5뎀, 3틱) / 벌이야!: DoT (2초당 5뎀, 3틱)
-      if (shooter.augments?.["독걸려랑"]) scheduleDot(room, targetId, 5, 3, 1000);
-      if (shooter.augments?.["벌이야!"]) scheduleDot(room, targetId, 5, 3, 2000);
-    }
-
-    // ===== 서버 권위 상태이상/버프 처리 =====
-    if (!isSelfHit && shooter.augments) {
-      // 끈적여요: 둔화 (augments.json 기준 1500ms, 0.5)
-      if (shooter.augments["끈적여요"]) {
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: { status: "slow", ms: 1500, multiplier: 0.5 },
-        });
-      }
-
-      // 앗따거: 스턴(1000ms)
-      if (shooter.augments["앗따거"]) {
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: { status: "stun", ms: 1000 },
-        });
-      }
-
-      // 잠깐만: 넉백 (기본 임펄스 * 2)
-      if (shooter.augments["잠깐만"]) {
-        let dx = (target.x ?? hx) - hx;
-        let dy = (target.y ?? hy) - hy;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const impulseBase = 400 * 2;
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: {
-            status: "knockback",
-            vx: (dx / len) * impulseBase,
-            vy: (dy / len) * impulseBase,
-            ms: 0,
-          },
-        });
-      }
-
-      // 기생충: 라이프스틸(+15) — 살아있는 사수만
-      if (shooter.augments["기생충"] && (shooter.health ?? 100) > 0) {
-        shooter.health = Math.min(maxHealthOf(shooter), (shooter.health ?? 100) + 15);
-        io.to(roomId).emit("game:healthUpdate", {
-          playerId: shooterId,
-          health: shooter.health,
-          damage: 0,
-          timestamp: Date.now(),
-        });
-      }
-    }
+    // ===== 서버 권위 상태이상 (augments.json 수치 기준) =====
+    if (!isSelfHit) applyOnHitEffects(room, shooter, targetId, target, hx, hy, newHealth);
 
     // 기존 충돌 이벤트도 전송
     io.to(roomId).emit("game:bulletHit", hit);
@@ -898,18 +857,73 @@ function applyDamage(room: Room, targetId: string, damage: number): number | nul
 }
 
 // 도트 데미지: 라운드가 바뀌면(체력 리셋 등) 자동 중단
-function scheduleDot(room: Room, targetId: string, dmg: number, ticks: number, intervalMs: number) {
+function scheduleDot(
+  room: Room,
+  targetId: string,
+  dmg: number,
+  ticks: number,
+  intervalMs: number,
+  onTick?: (dealt: number) => void
+) {
   const round = room.currentRound;
   const timer = setInterval(() => {
-    if (
-      rooms.get(room.roomId) !== room ||
-      room.currentRound !== round ||
-      applyDamage(room, targetId, dmg) === null
-    ) {
-      return clearInterval(timer);
-    }
+    const before = room.players[targetId]?.health ?? 0;
+    const after =
+      rooms.get(room.roomId) === room && room.currentRound === round
+        ? applyDamage(room, targetId, dmg)
+        : null;
+    if (after === null) return clearInterval(timer);
+    onTick?.(before - after);
     if (--ticks <= 0 || (room.players[targetId]?.health ?? 0) <= 0) clearInterval(timer);
   }, intervalMs);
+}
+
+// 적중 시 사수 증강의 상태이상 적용. 같은 효과가 여러 개면 가장 강한 값 사용(클라 집계와 동일)
+function applyOnHitEffects(
+  room: Room,
+  shooter: Player,
+  targetId: string,
+  target: Player,
+  hx: number,
+  hy: number,
+  newHealth: number
+) {
+  const rid = room.roomId;
+  let slowMs = 0, slowMul = 1, stunMs = 0, knockMul = 1;
+  for (const e of augEffects(shooter)) {
+    const b = e.bullet;
+    if (!b) continue;
+    if (newHealth > 0 && b.poisonDps && b.poisonTicks)
+      scheduleDot(room, targetId, b.poisonDps, b.poisonTicks, b.poisonIntervalMs ?? 1000);
+    if (newHealth > 0 && b.parasiteDps && b.parasiteTicks)
+      // 기생충: 틱마다 입힌 만큼 사수 회복 (살아있을 때만)
+      scheduleDot(room, targetId, b.parasiteDps, b.parasiteTicks, 1000, (dealt) => {
+        if (dealt <= 0 || (shooter.health ?? 0) <= 0 || !room.players[shooter.id]) return;
+        shooter.health = Math.min(maxHealthOf(shooter), (shooter.health ?? 0) + dealt);
+        io.to(rid).emit("game:healthUpdate", {
+          playerId: shooter.id,
+          health: shooter.health,
+          damage: 0,
+          timestamp: Date.now(),
+        });
+      });
+    slowMs = Math.max(slowMs, b.slowOnHitMs ?? 0);
+    slowMul = Math.min(slowMul, b.slowMul ?? 1);
+    stunMs = Math.max(stunMs, b.stunMs ?? 0);
+    knockMul *= b.knockbackMul ?? 1;
+  }
+
+  const status = (data: object) =>
+    io.to(rid).emit("game:event", { type: "status", playerId: targetId, data });
+  if (slowMs > 0) status({ status: "slow", ms: slowMs, multiplier: slowMul });
+  if (stunMs > 0) status({ status: "stun", ms: stunMs });
+  if (knockMul > 1) {
+    const dx = (target.x ?? hx) - hx;
+    const dy = (target.y ?? hy) - hy;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const impulse = 400 * knockMul;
+    status({ status: "knockback", vx: (dx / len) * impulse, vy: (dy / len) * impulse, ms: 0 });
+  }
 }
 
 // 🔎 라운드 종료 판정 및 스케줄링 (3초 대기 후 방송)

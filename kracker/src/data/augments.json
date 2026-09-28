@@ -37,7 +37,10 @@
     "effects": {
       "bullet": {
         "speedMul": 1.2,
-        "homingStrength": 0.5
+        "homingStrength": 0.5,
+        "poisonDps": 5,
+        "poisonTicks": 3,
+        "poisonIntervalMs": 2000
       }
     }
   },
