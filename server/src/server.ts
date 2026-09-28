@@ -54,6 +54,7 @@ type Room = {
   }>;
   // 🆕 라운드 종료 브로드캐스트 지연 중 여부
   isRoundEnding?: boolean;
+  mapKey: string; // 선택된 맵 (data/maps.json)
   // 라운드 진행 단계: 전투 중에만 데미지가 들어간다
   phase?: "fighting" | "roundEnd" | "augment";
 };
@@ -90,6 +91,19 @@ const AUGMENT_DEFS = new Map<string, AugmentDef>(
     fs.readFileSync(path.join(__dirname, "../../kracker/src/data/augments.json"), "utf8")
   ) as AugmentDef[]).map((a) => [a.id, a])
 );
+// 맵 목록과 맵별 스폰: 클라이언트와 같은 파일 공유
+const CLIENT_DIR = path.join(__dirname, "../../kracker");
+const MAP_LIST = JSON.parse(
+  fs.readFileSync(path.join(CLIENT_DIR, "src/data/maps.json"), "utf8")
+) as Array<{ key: string; name: string }>;
+const MAP_SPAWNS = new Map<string, Array<{ name: "A" | "B"; x: number; y: number }>>(
+  MAP_LIST.map((m) => [
+    m.key,
+    JSON.parse(fs.readFileSync(path.join(CLIENT_DIR, `public/maps/${m.key}.json`), "utf8")).spawns ?? [],
+  ])
+);
+const DEFAULT_MAP = "level1";
+
 // 장신구 목록: 클라이언트와 같은 파일 공유
 const ACCESSORY_IDS = new Set<string>(
   (JSON.parse(
@@ -145,6 +159,7 @@ const toSafeRoom = (room: Room) => ({
   visibility: room.visibility,
   roomName: room.roomName,
   gameMode: room.gameMode,
+  mapKey: room.mapKey,
   createdAt: room.createdAt,
   players: Object.values(room.players).map((p) => ({
     id: p.id,
@@ -179,8 +194,10 @@ function computeSpawnPositions(room: Room): Record<string, { x: number; y: numbe
   const positions: Record<string, { x: number; y: number }> = {};
   const entries = Object.entries(room.players);
 
-  const byTeam = (team: Team) => DEFAULT_SPAWNS.filter((s) => s.name === team);
-  const all = DEFAULT_SPAWNS.slice();
+  const mapSpawns = MAP_SPAWNS.get(room.mapKey);
+  const spawns = mapSpawns && mapSpawns.length ? mapSpawns : DEFAULT_SPAWNS;
+  const byTeam = (team: Team) => spawns.filter((s) => s.name === team);
+  const all = spawns.slice();
 
   if (room.gameMode === "팀전") {
     const teamAIds = entries.filter(([, p]) => p.team === "A").map(([id]) => id);
@@ -232,6 +249,7 @@ function safeRoomState(room: Room) {
     visibility: room.visibility,
     roomName: room.roomName,
     gameMode: room.gameMode,
+    mapKey: room.mapKey,
   };
 }
 
@@ -287,6 +305,7 @@ io.on("connection", (socket) => {
       roundResults: [],
       augmentSelections: [],
       isRoundEnding: false,
+      mapKey: MAP_SPAWNS.has(payload.mapKey) ? payload.mapKey : DEFAULT_MAP,
     };
 
     const player: Player = {
@@ -514,6 +533,19 @@ io.on("connection", (socket) => {
     const nick = str(payload?.nickname, 20);
     if (!room || !p || !nick) return ack?.({ ok: false });
     p.nickname = nick;
+    io.to(room.roomId).emit("room:update", safeRoomState(room));
+    ack?.({ ok: true });
+  });
+
+  // 맵 변경 (방장만, 대기 중에만)
+  socket.on("room:setMap", (payload: { mapKey?: string }, ack?: Function) => {
+    const rid = currentRoomIdOf(socket);
+    const room = rid ? rooms.get(rid) : undefined;
+    if (!room || room.status !== "waiting") return ack?.({ ok: false });
+    if (room.hostId !== socket.id) return ack?.({ ok: false, error: "NOT_HOST" });
+    const key = payload?.mapKey;
+    if (typeof key !== "string" || !MAP_SPAWNS.has(key)) return ack?.({ ok: false, error: "BAD_MAP" });
+    room.mapKey = key;
     io.to(room.roomId).emit("room:update", safeRoomState(room));
     ack?.({ ok: true });
   });

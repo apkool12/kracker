@@ -60,7 +60,16 @@ async function main() {
   const accInfo = await call(b, "room:info", { roomId });
   assert.equal(accInfo.room.players.find((p: any) => p.id === a.id).accessory, "crown");
 
+  // 맵: 방장만, 목록에 있는 맵만. 스폰은 해당 맵 좌표
+  assert.equal((await call(b, "room:setMap", { mapKey: "level2" })).ok, false, "non-host changed map");
+  assert.equal((await call(a, "room:setMap", { mapKey: "nope" })).ok, false);
+  assert((await call(a, "room:setMap", { mapKey: "level2" })).ok, "setMap failed");
+  const started = next(a, "game:started");
+
   assert((await call(a, "game:start", {})).ok, "start failed");
+  const st = await started;
+  assert.equal(st.room.mapKey, "level2");
+  assert.deepEqual(st.spawnPositions[a.id!], { x: 310, y: 505 }, "level2 spawn for team A");
 
   // 방 밖의 소켓은 데미지를 줄 수 없다
   const outsider = await connect();

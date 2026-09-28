@@ -29,7 +29,7 @@ const GAME_SETTINGS = {
   DEFAULT_MAP: "level1",
 
   // 사용 가능한 맵들
-  AVAILABLE_MAPS: ["level1", "arena1", "sky_temple"] as const,
+  AVAILABLE_MAPS: ["level1", "level2"] as const, // data/maps.json 과 동일하게 유지
 } as const;
 
 // ===== UI 관련 상수 =====

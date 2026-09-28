@@ -1,4 +1,5 @@
 // src/pages/GameLobby.tsx
+import MAP_LIST from "../data/maps.json";
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -278,6 +279,9 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
     fetchRoomInfo();
 
     const onUpdate = (payload: any) => {
+      // 방 정보(맵/방장 등)도 갱신
+      const roomPart = payload?.room ?? payload;
+      if (roomPart?.roomId) setRoom((prev: any) => ({ ...(prev ?? {}), ...roomPart }));
       const list = payload?.players ?? payload?.room?.players;
       if (list) {
         setPlayers(list.map(normalizePlayer));
@@ -320,6 +324,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
           room: {
             roomId: room.roomId,
             gameMode: room.gameMode || "일반",
+            mapKey: gameData.room?.mapKey ?? (room as any).mapKey,
             roomName: room.roomName,
           },
           myPlayerId: myId,
@@ -631,6 +636,32 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
           )}
         </OuterCard>
 
+        <MapRow role="radiogroup" aria-label="맵 선택">
+          {MAP_LIST.map((m) => {
+            const active = ((room as any)?.mapKey ?? "level1") === m.key;
+            const isHost = !!myId && (room as any)?.hostId === myId;
+            return (
+              <MapChip
+                key={m.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                $active={active}
+                disabled={!isHost}
+                title={isHost ? "맵 선택" : "방장만 맵을 바꿀 수 있어요"}
+                onClick={() => {
+                  if (!isHost || active) return;
+                  socket.emit("room:setMap", { mapKey: m.key }, (res: any) => {
+                    if (!res?.ok) fetchRoomInfo();
+                  });
+                }}
+              >
+                {m.name}
+              </MapChip>
+            );
+          })}
+        </MapRow>
+
         <ActionButton
           disabled={isDisabled}
           onClick={handleGameStart}
@@ -784,4 +815,31 @@ const InnerDivider = styled.hr`
   border: 0;
   height: 2px;
   background: rgba(255, 255, 255, 0.35);
+`;
+
+const MapRow = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+`;
+
+const MapChip = styled.button<{ $active?: boolean }>`
+  min-width: 120px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: none;
+  font-size: 18px;
+  color: ${({ $active }) => ($active ? "#0b0b24" : "#d9dbe6")};
+  background: ${({ $active }) => ($active ? "#ffffff" : "rgba(255,255,255,0.08)")};
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  &:disabled {
+    cursor: default;
+    opacity: ${({ $active }) => ($active ? 1 : 0.5)};
+  }
+  &:hover:not(:disabled) {
+    background: ${({ $active }) => ($active ? "#ffffff" : "rgba(255,255,255,0.18)")};
+  }
 `;

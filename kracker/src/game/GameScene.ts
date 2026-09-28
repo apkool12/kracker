@@ -184,7 +184,8 @@ export default class GameScene extends Phaser.Scene {
       );
 
       // 맵 시스템 초기화
-      await this.initializeMapSystem(data?.mapKey);
+      // 맵: 씬 데이터 → 로비에서 고른 맵(gameState.room.mapKey) → 기본 맵
+      await this.initializeMapSystem(data?.mapKey ?? readSelectedMapKey());
 
       // Physics Groups 초기화
       this.initializePhysicsGroups();
@@ -2281,3 +2282,13 @@ export default class GameScene extends Phaser.Scene {
   }
 }
 
+
+// 로비에서 선택된 맵 키 (RoundsGame 이 sessionStorage 에 저장한 gameState)
+function readSelectedMapKey(): MapKey | undefined {
+  try {
+    const key = JSON.parse(sessionStorage.getItem("gameState") || "null")?.room?.mapKey;
+    return (GAME_SETTINGS.AVAILABLE_MAPS as readonly string[]).includes(key) ? key : undefined;
+  } catch {
+    return undefined;
+  }
+}
