@@ -34,6 +34,7 @@ import { CameraManager } from "./managers/CameraManager";
 import { ShadowManager } from "./managers/ShadowManager";
 import { ShootingManager } from "./managers/ShootingManager";
 import CollisionSystem from "./systems/CollisionSystem";
+import { sampleSnapshots, REMOTE_RENDER_DELAY_MS, TELEPORT_DISTANCE } from "./net/interpolation";
 // 증강 정의(JSON)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -84,6 +85,8 @@ interface RemotePlayer {
     currentY: number;
     targetVX: number;
     targetVY: number;
+    // 수신 스냅샷 버퍼 (수신 시각 기준, 최근 것이 뒤)
+    buffer?: Array<{ t: number; x: number; y: number; vx: number; vy: number }>;
   };
   networkState: {
     isGrounded: boolean;
@@ -436,8 +439,13 @@ export default class GameScene extends Phaser.Scene {
     remotePlayer.interpolation.targetVY = movement.vy;
     remotePlayer.lastUpdate = Date.now();
 
-    // 위치 즉시 업데이트 (부드러운 보간은 update에서 처리)
-    remotePlayer.lastPosition = { x: movement.x, y: movement.y };
+    // 스냅샷 버퍼에 적재 (그리기/히트박스는 update 의 보간 위치 사용)
+    const buf = (remotePlayer.interpolation.buffer ||= []);
+    // 리스폰 등 순간이동이면 이전 궤적을 버려 미끄러지지 않게
+    const prev = buf[buf.length - 1];
+    if (prev && Math.hypot(movement.x - prev.x, movement.y - prev.y) > TELEPORT_DISTANCE) buf.length = 0;
+    buf.push({ t: performance.now(), x: movement.x, y: movement.y, vx: movement.vx || 0, vy: movement.vy || 0 });
+    if (buf.length > 20) buf.splice(0, buf.length - 20);
 
     // 가시성은 체력 상태에 따름 (사망자는 계속 숨김)
     remotePlayer.isVisible = (remotePlayer.networkState.health || 0) > 0;
@@ -1343,15 +1351,11 @@ export default class GameScene extends Phaser.Scene {
     deltaTime: number
   ): void {
     const interpolation = remotePlayer.interpolation;
-    const lerpFactor = Math.min(deltaTime * 0.008, 1); // 부드러운 보간
-
-    // 현재 위치를 타겟으로 서서히 이동
-    interpolation.currentX +=
-      (interpolation.targetX - interpolation.currentX) * lerpFactor;
-    interpolation.currentY +=
-      (interpolation.targetY - interpolation.currentY) * lerpFactor;
-
-    // 속도는 targetVX를 직접 사용 (다리 애니메이션용)
+    const p = sampleSnapshots(interpolation.buffer, performance.now() - REMOTE_RENDER_DELAY_MS);
+    if (p) {
+      interpolation.currentX = p.x;
+      interpolation.currentY = p.y;
+    }
 
     // 실제 위치 업데이트
     remotePlayer.lastPosition = {
@@ -2876,3 +2880,4 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 }
+

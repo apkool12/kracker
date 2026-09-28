@@ -15,7 +15,8 @@
     "start": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:interp": "node --experimental-strip-types --no-warnings scripts/interpolation.check.ts"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

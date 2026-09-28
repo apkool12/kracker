@@ -65,9 +65,14 @@ async function main() {
   const hp = await call(a, "room:info", { roomId });
   assert.equal(hp.room.players.find((p: any) => p.id === b.id).health, 100, "spoofed/negative damage applied");
 
+  // 클라가 보고한 데미지(100)는 무시되고 서버 공식(기본 25)이 적용된다
+  const hpUpdate = next(b, "game:healthUpdate");
+  a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, damage: 100, bulletId: "collision_1" } });
+  assert.equal((await hpUpdate).health, 75, "server should compute damage");
+
   // A가 B를 처치 → 라운드 결과 → 증강 단계
   const result = next(a, "round:result");
-  a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, damage: 100 } });
+  for (let i = 0; i < 3; i++) a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, bulletId: "collision_1" } });
   // 죽은 B는 반격할 수 없다
   b.emit("game:bulletHit", { hit: { targetPlayerId: a.id, damage: 100 } });
   const r = await result;

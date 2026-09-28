@@ -3,6 +3,8 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
 type Team = "A" | "B";
 type Status = "waiting" | "playing" | "ended";
 type Visibility = "public" | "private";
@@ -57,8 +59,40 @@ type Room = {
 
 const MAX_ROOMS = 5;
 const TEAM_CAP = 3;
-const MAX_HIT_DAMAGE = 100; // ponytail: 클라 보고 데미지 상한. 서버가 증강으로 직접 계산하면 제거
+const MAX_HIT_DAMAGE = 100; // 낙하 등 클라가 보고하는 자기 피해의 상한
 const WINS_TO_FINAL = 5;
+const BASE_BULLET_DAMAGE = 25; // 클라 ShootingManager 기본 damage 와 동일
+const BASE_MAX_HEALTH = 100;
+
+// 증강 정의: 클라이언트와 같은 파일을 공유 (src/, dist/ 둘 다 같은 깊이)
+type AugmentDef = {
+  id: string;
+  effects?: {
+    bullet?: { damageMul?: number; damageAdd?: number };
+    player?: { maxHealthDelta?: number };
+  };
+};
+const AUGMENT_DEFS = new Map<string, AugmentDef>(
+  (JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../../kracker/src/data/augments.json"), "utf8")
+  ) as AugmentDef[]).map((a) => [a.id, a])
+);
+const augEffects = (p: Player) =>
+  Object.keys(p.augments || {}).map((id) => AUGMENT_DEFS.get(id)?.effects || {});
+
+// 서버 권위 총알 데미지: 클라 buildBulletConfig 와 같은 공식
+function bulletDamage(p: Player): number {
+  let mul = 1;
+  let add = 0;
+  for (const e of augEffects(p)) {
+    mul *= e.bullet?.damageMul ?? 1;
+    add += e.bullet?.damageAdd ?? 0;
+  }
+  return Math.max(0, Math.round(BASE_BULLET_DAMAGE * mul + add));
+}
+function maxHealthOf(p: Player): number {
+  return BASE_MAX_HEALTH + augEffects(p).reduce((s, e) => s + (e.player?.maxHealthDelta ?? 0), 0);
+}
 
 const str = (v: unknown, max: number, fallback = "") =>
   typeof v === "string" && v.trim() ? v.trim().slice(0, max) : fallback;
@@ -626,12 +660,16 @@ io.on("connection", (socket) => {
     // 죽은 사수의 총알은 무효 (자기 자신 낙하 데미지는 예외 없이 동일 규칙)
     if ((shooter.health ?? 100) <= 0) return;
 
-    const damage = Math.min(MAX_HIT_DAMAGE, Math.max(0, num(hit.damage) ?? 25));
-    const newHealth = applyDamage(room, targetId, damage);
-    if (newHealth === null) return;
-
     // 증강 효과는 상대를 맞췄을 때만 (낙하 데미지 등 자기 피격 제외)
     const isSelfHit = targetId === shooterId;
+    const isSplash = String(hit.bulletId ?? "").startsWith("explosion_");
+    const damage = isSelfHit
+      ? Math.min(MAX_HIT_DAMAGE, Math.max(0, num(hit.damage) ?? 0))
+      : isSplash
+        ? Math.round(bulletDamage(shooter) * 0.5)
+        : bulletDamage(shooter);
+    const newHealth = applyDamage(room, targetId, damage);
+    if (newHealth === null) return;
     const hx = num(hit.x) ?? target.x ?? 0;
     const hy = num(hit.y) ?? target.y ?? 0;
 
@@ -681,7 +719,7 @@ io.on("connection", (socket) => {
 
       // 기생충: 라이프스틸(+15) — 살아있는 사수만
       if (shooter.augments["기생충"] && (shooter.health ?? 100) > 0) {
-        shooter.health = Math.min(100, (shooter.health ?? 100) + 15);
+        shooter.health = Math.min(maxHealthOf(shooter), (shooter.health ?? 100) + 15);
         io.to(roomId).emit("game:healthUpdate", {
           playerId: shooterId,
           health: shooter.health,
@@ -929,10 +967,10 @@ function tryCompleteAugments(room: Room): boolean {
     t: Date.now(),
   });
 
-  // 전원 체력 회복 + 스폰 복귀 + 부활, 그리고 전투 재개
+  // 전원 체력 회복(증강 최대 체력 반영) + 스폰 복귀 + 부활, 그리고 전투 재개
   Object.values(room.players).forEach((p) => {
-    p.health = 100;
-    io.to(rid).emit("game:healthUpdate", { playerId: p.id, health: 100, damage: 0, timestamp: Date.now() });
+    p.health = maxHealthOf(p);
+    io.to(rid).emit("game:healthUpdate", { playerId: p.id, health: p.health, damage: 0, timestamp: Date.now() });
   });
   Object.keys(room.players).forEach((playerId, index) => {
     io.to(rid).emit("game:event", {
