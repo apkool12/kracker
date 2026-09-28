@@ -1,6 +1,5 @@
 // src/game/render/gun.ts - 완전히 새로운 총구 로직
 import { CharacterColors, GunPose } from "../types/player.types";
-import { createGradientColors } from "./character.core";
 
 /**
  * 🔥 새로운 총 그리기 - 단순하게

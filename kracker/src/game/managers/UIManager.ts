@@ -82,7 +82,6 @@ export class UIManager {
 
   // UI 상태
   private isVisible: boolean = true;
-  private currentYOffset: number = 0;
 
   constructor(scene: Phaser.Scene, config?: Partial<UIConfig>) {
     this.scene = scene;
@@ -120,80 +119,6 @@ export class UIManager {
     this.uiContainer.setDepth(1000); // 최상위 레이어
 
     Debug.log.debug(LogCategory.UI, "UI 컨테이너 생성됨");
-  }
-
-  // 안내 텍스트들 생성 - 모든 키 설정 텍스트 제거됨
-  private createInstructionTexts(): void {
-    // 모든 키 설정 텍스트 제거
-    return;
-
-    // if (!this.config.visibility.instructions) return;
-
-    // this.currentYOffset = this.config.position.y;
-
-    // // 맵 전환 안내
-    // this.addTextElement("mapInstruction", "Press 1, 2, 3 to switch maps", {
-    //   font: this.config.styles.titleFont,
-    //   color: this.config.styles.textColors.title,
-    // });
-
-    // // 색상 변경 안내
-    // this.addTextElement(
-    //   "colorInstruction",
-    //   "Q:빨강 E:주황 R:초록 T:파랑 Y:보라 U:핑크 I:기본",
-    //   {
-    //     font: this.config.styles.defaultFont,
-    //     color: this.config.styles.textColors.instruction,
-    //   }
-    // );
-
-    // // 그림자 조작 안내
-    // this.addTextElement(
-    //   "shadowInstruction",
-    //   "그림자: 4,5,6(각도) 7(애니메이션) M,N,.,,(프리셋) BS(ON/OFF) 8,9,0(테스트)",
-    //   {
-    //     font: this.config.styles.defaultFont,
-    //     color: this.config.styles.textColors.shadow,
-    //   }
-    // );
-
-    // // 디버그 키 안내 - 제거됨
-    // // if (this.config.visibility.debugInfo) {
-    // //   this.addTextElement(
-    // //     "debugInstruction",
-    // //     "디버그: F1(패널) F2(모드) F3(로그레벨) F4(슬로우모션) F12(스크린샷)",
-    // //     {
-    // //       font: this.config.styles.defaultFont,
-    // //       color: this.config.styles.textColors.debug,
-    // //     }
-    // //   );
-    // }
-
-    // Debug.log.debug(LogCategory.UI, "안내 텍스트 생성 완료");
-  }
-
-  // 상태 텍스트들 생성 - 모든 상태 텍스트 제거됨
-  private createStatusTexts(): void {
-    // 모든 상태 텍스트 제거
-    return;
-
-    // // 현재 맵 표시
-    // if (this.config.visibility.mapStatus) {
-    //   this.addTextElement("mapStatus", "Map: Loading...", {
-    //     font: "14px Arial",
-    //     color: this.config.styles.textColors.status,
-    //   });
-    // }
-
-    // // 그림자 상태 표시
-    // if (this.config.visibility.shadowStatus) {
-    //   this.addTextElement("shadowStatus", "그림자: 초기화 중...", {
-    //     font: this.config.styles.defaultFont,
-    //     color: this.config.styles.textColors.shadow,
-    //   });
-    // }
-
-    // Debug.log.debug(LogCategory.UI, "상태 텍스트 생성 완료");
   }
 
   // 닉네임 태그 생성
@@ -265,37 +190,6 @@ export class UIManager {
   public destroyAllNameTags(): void {
     this.nameTags.forEach((t) => t.destroy());
     this.nameTags.clear();
-  }
-
-  // 텍스트 요소 추가 헬퍼
-  private addTextElement(key: string, content: string, style: any): void {
-    if (!this.uiContainer) return;
-
-    const textStyle = {
-      font: style.font || this.config.styles.defaultFont,
-      color: style.color || this.config.styles.textColors.title,
-      backgroundColor: this.config.styles.backgroundColor,
-      padding: this.config.styles.padding,
-    };
-
-    const textObject = this.scene.add.text(
-      this.config.position.x,
-      this.currentYOffset,
-      content,
-      textStyle
-    );
-
-    this.uiContainer.add(textObject);
-
-    this.uiElements.set(key, {
-      key,
-      text: textObject,
-      visible: true,
-    });
-
-    this.currentYOffset += this.config.position.margin;
-
-    Debug.log.trace(LogCategory.UI, `텍스트 요소 추가: ${key}`);
   }
 
   // UI 위치 업데이트
@@ -506,4 +400,6 @@ export class UIManager {
 
     Debug.log.info(LogCategory.UI, "UIManager 정리 완료");
   }
+
+  private currentYOffset: number = 0;
 }

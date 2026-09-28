@@ -1,5 +1,4 @@
-// src/game/shadow/ShadowTypes.ts - 수정된 기본 설정
-import { Platform } from "../config";
+
 
 /** 빛 설정 */
 export interface LightConfig {

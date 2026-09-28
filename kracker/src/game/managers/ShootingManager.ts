@@ -7,7 +7,7 @@ import { ShootingSystem } from "../bullet";
 // @ts-ignore
 import AUGMENT_DEFS from "../../data/augments.json";
 import { aggregateAugments as centralAggregate } from "../../data/augments";
-import { Debug, debugManager } from "../debug/DebugManager";
+import { Debug } from "../debug/DebugManager";
 import { LogCategory } from "../debug/Logger";
 import Player from "../player/Player";
 
@@ -43,9 +43,6 @@ export class ShootingManager {
   private onHitCallback?: (x: number, y: number) => void;
   private ownerId: string | null = null;
   private augmentResolver?: (
-    playerId: string
-  ) => Record<string, { id: string; startedAt: number }> | undefined;
-  private getAugmentsFor?: (
     playerId: string
   ) => Record<string, { id: string; startedAt: number }> | undefined;
 
@@ -228,38 +225,7 @@ export class ShootingManager {
       });
     } catch {}
 
-    // 총알 기본치 기반 파라미터 구성
-    const baseSpeed = this.config.muzzleVelocity;
-    const baseDamage = this.config.damage;
-    const baseRadius = 6;
-
-    // 총알 색상(증강 기반)
-    let bulletColor = 0xffaa00;
-    if (agg.bullet.color) {
-      // 16진수 문자열을 숫자로 변환
-      bulletColor = parseInt(agg.bullet.color, 16);
-    } else {
-      // 기존 하드코딩된 색상 (호환성 유지)
-      if (aug?.["독걸려랑"]) bulletColor = 0x00ff00;
-      else if (aug?.["벌이야!"]) bulletColor = 0xffff00;
-      else if (aug?.["기생충"]) bulletColor = 0x800080; // 보라색
-      else if (aug?.["끈적여요"]) bulletColor = 0x90ee90; // 연한 연두색
-    }
-    // 중력 저항 계산 (그날 인류는 떠올렸다 카드용)
-    const gravityResistance = agg.bullet.gravityResistance || 0;
-    const gravityMultiplier = 1 - gravityResistance;
-
-    const bulletConfig = {
-      speed: baseSpeed * agg.bullet.speedMul,
-      damage: Math.max(
-        0,
-        Math.round(baseDamage * agg.bullet.damageMul + agg.bullet.damageAdd)
-      ),
-      radius: Math.max(2, Math.round(baseRadius * agg.bullet.sizeMul)),
-      homingStrength: agg.bullet.homingStrength,
-      explodeRadius: agg.bullet.explodeRadius,
-      gravityResistance: gravityResistance,
-    } as const;
+    const bulletConfig = this.buildBulletConfig(aug);
 
     console.log(
       `🎯 로컬 총알 목표: (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`
@@ -271,19 +237,7 @@ export class ShootingManager {
       gunY,
       targetX,
       targetY,
-      {
-        // 커스텀 총알 설정
-        color: bulletColor,
-        tailColor: bulletColor,
-        radius: bulletConfig.radius,
-        speed: bulletConfig.speed,
-        damage: bulletConfig.damage,
-        homingStrength: bulletConfig.homingStrength,
-        explodeRadius: bulletConfig.explodeRadius,
-        gravity: { x: 0, y: 1800 * gravityMultiplier }, // 중력 1800으로 통일, 중력 저항 적용
-        useWorldGravity: false,
-        lifetime: 8000,
-      }
+      bulletConfig
     );
 
     if (shotFired) {
@@ -796,28 +750,6 @@ export class ShootingManager {
     return this.shootingSystem?.getBulletCount() || 0;
   }
 
-  // ===== 헬퍼 메서드들 =====
-
-  private getPlayerX(): number {
-    if (!this.player) return 0;
-    const playerX =
-      typeof this.player.getX === "function"
-        ? this.player.getX()
-        : (this.player as any).x || 0;
-    const playerState = this.player.getState ? this.player.getState() : null;
-    const facingDirection = playerState?.facingDirection || "right";
-    return playerX + (facingDirection === "right" ? 30 : -30);
-  }
-
-  private getPlayerY(): number {
-    if (!this.player) return 0;
-    const playerY =
-      typeof this.player.getY === "function"
-        ? this.player.getY()
-        : (this.player as any).y || 0;
-    return playerY - 10;
-  }
-
   // ===== 원격 플레이어용 메서드들 =====
 
   /**
@@ -827,6 +759,53 @@ export class ShootingManager {
   public getDamage(): number {
     return this.config?.damage ?? 25; // 내부 private config 사용
   }
+  /**
+   * 사수의 증강으로 총알 파라미터 계산 (로컬/원격 총알이 같은 규칙을 쓰도록)
+   */
+  private buildBulletConfig(aug: any) {
+    const agg = centralAggregate(aug);
+    // 총알 기본치 기반 파라미터 구성
+    const baseSpeed = this.config.muzzleVelocity;
+    const baseDamage = this.config.damage;
+    const baseRadius = 6;
+
+    // 총알 색상(증강 기반)
+    let bulletColor = 0xffaa00;
+    if (agg.bullet.color) {
+      // 16진수 문자열을 숫자로 변환
+      bulletColor = parseInt(agg.bullet.color, 16);
+    } else {
+      // 기존 하드코딩된 색상 (호환성 유지)
+      if (aug?.["독걸려랑"]) bulletColor = 0x00ff00;
+      else if (aug?.["벌이야!"]) bulletColor = 0xffff00;
+      else if (aug?.["기생충"]) bulletColor = 0x800080; // 보라색
+      else if (aug?.["끈적여요"]) bulletColor = 0x90ee90; // 연한 연두색
+    }
+    // 중력 저항 계산 (그날 인류는 떠올렸다 카드용)
+    const gravityResistance = agg.bullet.gravityResistance || 0;
+    const gravityMultiplier = 1 - gravityResistance;
+
+    const bulletConfig = {
+      speed: baseSpeed * agg.bullet.speedMul,
+      damage: Math.max(
+        0,
+        Math.round(baseDamage * agg.bullet.damageMul + agg.bullet.damageAdd)
+      ),
+      radius: Math.max(2, Math.round(baseRadius * agg.bullet.sizeMul)),
+      homingStrength: agg.bullet.homingStrength,
+      explodeRadius: agg.bullet.explodeRadius,
+      gravityResistance: gravityResistance,
+    } as const;
+    return {
+      ...bulletConfig,
+      color: bulletColor,
+      tailColor: bulletColor,
+      gravity: { x: 0, y: 1800 * gravityMultiplier }, // 중력 1800으로 통일, 중력 저항 적용
+      useWorldGravity: false,
+      lifetime: 8000,
+    };
+  }
+
   public createRemotePlayerBullet(shootData: {
     gunX: number;
     gunY: number;
@@ -870,12 +849,8 @@ export class ShootingManager {
     const rAgg = this.aggregateAugments(remoteAug);
     // 서버 설정 우선, 없으면 기본값 사용
     const serverConfig = shootData.bulletConfig;
-    // 서버 bulletConfig에 색상 정보 추가
-    const remoteBulletConfig = {
-      ...shootData.bulletConfig,
-      color: shootData.color || 0xffaa00,
-      tailColor: shootData.color || 0xffaa00,
-    };
+    // 원격 사수의 증강으로 로컬과 동일하게 총알 파라미터 계산
+    const remoteBulletConfig = this.buildBulletConfig(remoteAug);
 
     const shotFired = this.shootingSystem.createRemoteBullet(
       shootData.gunX,

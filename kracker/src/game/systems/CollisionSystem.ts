@@ -14,14 +14,10 @@ export class CollisionSystem {
 
   // Reusable geometry objects
   private _ccdLine: Phaser.Geom.Line = new Line();
-  private _rect: Phaser.Geom.Rectangle = new Rectangle();
 
   // 🔥 벽 관통 방지를 위한 더 엄격한 설정
   private readonly MIN_DELTA = 0.05; // 더 작은 최소 이동량
-  private readonly EPS = 0.1; // 더 큰 여유값
-  private readonly SPAWN_SAFETY_DISTANCE = 10; // 스폰 시 안전 거리
-
-  private player?: any;
+  private readonly EPS = 0.1;
   private networkManager?: any; // 네트워크 매니저 참조
   private remotePlayers?: Map<string, any>; // 원격 플레이어들 참조
 
@@ -38,6 +34,8 @@ export class CollisionSystem {
 
     // CCD 스윕은 매 프레임 update에서 수행
     this.scene.events.on("update", this._ccdSweep, this);
+    // 폭발탄 범위 피해
+    this.scene.events.on("bullet:explosion", this.onExplosion, this);
 
     // 일반 Arcade 충돌도 유지
     this.setupCollisions();
@@ -72,6 +70,7 @@ export class CollisionSystem {
   destroy() {
     console.log("🧹 CollisionSystem 정리 중...");
     this.scene.events.off("update", this._ccdSweep, this);
+    this.scene.events.off("bullet:explosion", this.onExplosion, this);
     if (this.collider) {
       this.collider.destroy();
       this.collider = undefined;
@@ -117,7 +116,14 @@ export class CollisionSystem {
         bulletSprite.setData("__hitThisFrame", true);
         this.onBulletHitPlatform(bulletSprite, platformSprite);
       }) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined,
+      ((obj1: any, obj2: any) => {
+        const b = obj1?.getData?.("__isBullet") ? obj1 : obj2;
+        if (b?.getData?.("__ghost")) return false;
+        // 바운스 잔여가 있으면 Arcade 가 충돌면 기준으로 반사하도록
+        const bounceLeft = b?.getData?.("__bounce") || 0;
+        b?.body?.setBounce?.(bounceLeft > 0 ? 1 : 0);
+        return true;
+      }) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       this
     );
 
@@ -183,72 +189,6 @@ export class CollisionSystem {
       // 🔥 총알 ↔ 플레이어 충돌 체크 (모든 플레이어)
       let playerHit = false;
 
-      // 로컬 플레이어 충돌 체크
-      if (this.player && typeof this.player.getPosition === "function") {
-        const getHealth = (this.player as any)?.getHealth?.();
-        if (typeof getHealth === "number" && getHealth > 0) {
-          const pos = this.player.getPosition();
-          const pb = this.player.getBounds?.();
-          const playerRadius = pb?.radius ?? 25;
-
-          const dx = b.x - pos.x;
-          const dy = b.y - pos.y;
-          const bulletR = this.getBulletRadius(b);
-          const rSum = playerRadius + bulletR;
-
-          if (dx * dx + dy * dy <= rSum * rSum) {
-            playerHit = true;
-            b.setData("__hitThisFrame", true);
-
-            const bulletRef = b.getData("__bulletRef");
-            const dmg = bulletRef?.getConfig
-              ? bulletRef.getConfig().damage
-              : 10;
-
-            // 로컬 플레이어가 맞았을 때는 서버에 타격 전송만 하고 로컬 데미지 처리는 하지 않음
-            // (서버에서 healthUpdate 이벤트로 체력 동기화)
-            console.log(
-              `💥 CollisionSystem: 로컬 플레이어 맞음 - 서버에 타격 전송 (데미지: ${dmg})`
-            );
-
-            // 서버에 타격 전송 (GameScene에서 처리하도록 이벤트 발생)
-            try {
-              const bulletRef = b.getData("__bulletRef");
-              const ownerId =
-                bulletRef?.ownerId || b.getData("__ownerId") || "unknown";
-
-              // GameScene에 타격 이벤트 전달
-              (this.scene as any).events?.emit?.("bullet:hitPlayer", {
-                bulletId: (b as any).id || `bullet_${Date.now()}`,
-                targetPlayerId: (this.player as any)?.getId?.() || "local",
-                damage: dmg,
-                x: b.x,
-                y: b.y,
-                ownerId: ownerId,
-              });
-            } catch (e) {
-              console.warn("타격 이벤트 전송 실패:", e);
-            }
-
-            // 관통 처리: __pierce > 0 이면 제거하지 않고 관통 횟수 감소
-            const pierceLeft = (b.getData && b.getData("__pierce")) as
-              | number
-              | undefined;
-            if (pierceLeft && pierceLeft > 0) {
-              b.setData && b.setData("__pierce", pierceLeft - 1);
-            } else {
-              // 총알 폭발/제거
-              try {
-                if (bulletRef?.hit) bulletRef.hit(b.x, b.y);
-                else b.destroy(true);
-              } catch (e) {
-                b.destroy(true);
-              }
-            }
-          }
-        }
-      }
-
       // 원격 플레이어들 충돌 체크
       if (!playerHit && this.remotePlayers) {
         const playerIds = Array.from(this.remotePlayers.keys());
@@ -269,6 +209,11 @@ export class CollisionSystem {
           const rSum = playerRadius + bulletR;
 
           if (dx * dx + dy * dy <= rSum * rSum) {
+            const hitIds: Set<string> = b.getData("__hitIds") || new Set();
+            if (hitIds.has(playerId)) continue; // 관통 중인 같은 대상
+            hitIds.add(playerId);
+            b.setData("__hitIds", hitIds);
+
             playerHit = true;
             b.setData("__hitThisFrame", true);
 
@@ -292,25 +237,32 @@ export class CollisionSystem {
               this.networkManager.sendBulletHit(hitData);
             }
 
-            // 총알 폭발/제거
-            try {
-              if (bulletRef?.hit) bulletRef.hit(b.x, b.y);
-              else b.destroy(true);
-            } catch (e) {
-              b.destroy(true);
+            // 관통 잔여가 있으면 계속 날아감, 아니면 폭발/제거
+            const pierceLeft = (b.getData("__pierce") as number) || 0;
+            if (pierceLeft > 0) {
+              b.setData("__pierce", pierceLeft - 1);
+            } else {
+              try {
+                if (bulletRef?.hit) bulletRef.hit(b.x, b.y);
+                else b.destroy(true);
+              } catch (e) {
+                b.destroy(true);
+              }
             }
-            break; // 한 명만 맞추면 충분
+            break; // 한 프레임에 한 명
           }
         }
       }
 
       // 플레이어를 맞췄으면 다음 총알로
       if (playerHit) {
+        b.setData("__prevX", curX);
+        b.setData("__prevY", curY);
         continue;
       }
 
-      // 유령 탄: 플랫폼 충돌 무시
-      if (b.getData("__ghost")) {
+      // 유령 탄은 벽 무시, 바운스 탄은 Arcade collider 가 반사 처리
+      if (b.getData("__ghost") || (b.getData("__bounce") || 0) > 0) {
         b.setData("__prevX", curX);
         b.setData("__prevY", curY);
         continue;
@@ -348,6 +300,31 @@ export class CollisionSystem {
       }
     }
   };
+
+  private onExplosion(e: { x: number; y: number; radius: number; damage: number; ownerId?: string | null; hitIds?: Set<string> }) {
+    const myId = this.networkManager?.getNetworkStatus?.().myPlayerId;
+    if (!this.networkManager || !this.remotePlayers || !myId) return;
+    if (e.ownerId && e.ownerId !== myId) return;
+    const splash = Math.round((e.damage || 0) * 0.5);
+    if (splash <= 0) return;
+
+    this.remotePlayers.forEach((rp, playerId) => {
+      const pos = rp?.lastPosition;
+      if (!pos || (rp.networkState?.health || 0) <= 0) return;
+      if (e.hitIds?.has(playerId)) return; // 직격 대상은 이미 피격 처리됨
+      const dx = pos.x - e.x;
+      const dy = pos.y - e.y;
+      const r = e.radius + 25;
+      if (dx * dx + dy * dy > r * r) return;
+      this.networkManager.sendBulletHit({
+        bulletId: `explosion_${Date.now()}`,
+        targetPlayerId: playerId,
+        damage: splash,
+        x: e.x,
+        y: e.y,
+      });
+    });
+  }
 
   /**
    * 🔥 총알 반지름 정확히 계산
@@ -492,12 +469,9 @@ export class CollisionSystem {
     // 바운스 탄: 반사 후 생존 (횟수 감소)
     const bounceLeft = bulletSprite.getData("__bounce") as number | undefined;
     if (bounceLeft && bounceLeft > 0) {
-      const body = bulletSprite.body as Phaser.Physics.Arcade.Body;
-      if (body) {
-        // 단순 반사: 속도 반전 + 약간 감쇠
-        body.setVelocity(-body.velocity.x * 0.9, -body.velocity.y * 0.9);
-      }
+      // 반사는 collider 의 setBounce(1) 로 Arcade 가 충돌면 기준 처리함
       bulletSprite.setData("__bounce", bounceLeft - 1);
+      bulletSprite.setData("__hitThisFrame", false);
       return;
     }
 
@@ -515,6 +489,9 @@ export class CollisionSystem {
       console.warn("총알 파괴 중 오류:", error);
     }
   };
+ // 스폰 시 안전 거리
+
+  private player?: any;
 }
 
 export default CollisionSystem;

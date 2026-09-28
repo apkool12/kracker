@@ -49,6 +49,45 @@ export class ShadowCalculator {
     return { polygons, clippedCount };
   }
 
+  private isPolygonInView(polygon: ShadowPolygon, camera: CameraInfo): boolean {
+    const points = polygon.points;
+
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minY = Infinity,
+      maxY = -Infinity;
+
+    for (let i = 0; i < points.length; i += 2) {
+      const x = points[i];
+      const y = points[i + 1];
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+
+    const buffer = 400; // ë” ë„“ì€ ë²„í¼
+    const cameraRight = camera.x + camera.width + buffer;
+    const cameraBottom = camera.y + camera.height + buffer;
+
+    return !(
+      maxX < camera.x - buffer ||
+      minX > cameraRight ||
+      maxY < camera.y - buffer ||
+      minY > cameraBottom
+    );
+  }
+
+  public getLightConfig(): LightConfig {
+    return { ...this.lightConfig };
+  }
+
+  public setLightAngle(angle: number): void {
+    this.lightConfig.angle = angle;
+  }
+
+
   /** ðŸŽ¯ ë” ê¸´ ì‚¬ë‹¤ë¦¬ê¼´ ê·¸ë¦¼ìž ê³„ì‚° */
   private calculateLongTrapezoidShadow(
     platform: Platform,
@@ -132,49 +171,12 @@ export class ShadowCalculator {
     return { points };
   }
 
+
   private getLightDirection(): { x: number; y: number } {
     const radian = (this.lightConfig.angle * Math.PI) / 180;
     return {
       x: Math.cos(radian),
       y: Math.sin(radian),
     };
-  }
-
-  private isPolygonInView(polygon: ShadowPolygon, camera: CameraInfo): boolean {
-    const points = polygon.points;
-
-    let minX = Infinity,
-      maxX = -Infinity;
-    let minY = Infinity,
-      maxY = -Infinity;
-
-    for (let i = 0; i < points.length; i += 2) {
-      const x = points[i];
-      const y = points[i + 1];
-
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-
-    const buffer = 400; // ë” ë„“ì€ ë²„í¼
-    const cameraRight = camera.x + camera.width + buffer;
-    const cameraBottom = camera.y + camera.height + buffer;
-
-    return !(
-      maxX < camera.x - buffer ||
-      minX > cameraRight ||
-      maxY < camera.y - buffer ||
-      minY > cameraBottom
-    );
-  }
-
-  public getLightConfig(): LightConfig {
-    return { ...this.lightConfig };
-  }
-
-  public setLightAngle(angle: number): void {
-    this.lightConfig.angle = angle;
   }
 }

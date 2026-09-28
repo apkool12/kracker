@@ -1,8 +1,6 @@
 // src/game/render/limbs.ts
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { drawGun } from "./gun";
-import { createGradientColors } from "./character.core";
-import { ParticleSystem } from "../particle";
 import {
   getIdleKeyframeAtTime,
   getWalkingKeyframeAtTime,

@@ -79,7 +79,8 @@ async function main() {
   const final = next(a, "game:final");
   assert((await call(a, "augment:select", { augmentId: "기생충", round: aug.round })).ok);
   b.disconnect();
-  await final;
+  const fin = await final;
+  assert.deepEqual(fin.winnerIds, [a.id], "remaining player should win");
 
   // 게임이 끝난 방은 다시 대기 상태
   const after = await call(a, "room:info", { roomId });

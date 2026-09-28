@@ -10,11 +10,8 @@ import { NetworkManager } from "./managers/NetworkManager"; // ☆ 네트워크 
 
 // ☆ 캐릭터 렌더링 관련 import 추가
 import { createCharacter, destroyCharacter } from "./render/character.core";
-import { getIdleKeyframeAtTime } from "./animations/keyframes/idle.keyframes";
-import { CharacterColors, GfxRefs, PlayerState } from "./types/player.types";
-import { LimbKeyframe } from "./animations/types/animation.types";
+import { CharacterColors, GfxRefs } from "./types/player.types";
 import { drawLimbs } from "./render/limbs";
-import { drawGun } from "./render/gun";
 import { updatePose, drawHealthBar } from "./render/character.pose";
 
 // 상수 및 설정
@@ -42,8 +39,6 @@ import CollisionSystem from "./systems/CollisionSystem";
 // @ts-ignore
 import AUGMENT_DEFS from "../data/augments.json";
 import {
-  aggregateAugments as centralAggregate,
-  findAugmentNamesWithEffect,
   getAugmentsForPlayer,
 } from "../data/augments";
 import { HIT_SOUND, SHOOT_SOUND } from "../assets/audios/tracks";
@@ -197,17 +192,12 @@ export default class GameScene extends Phaser.Scene {
   private currentMapKey: MapKey = GAME_SETTINGS.DEFAULT_MAP as MapKey;
   private sceneState: any = GAME_STATE.SCENE_STATES.LOADING;
   private isInitialized: boolean = false;
-  // 라운드 결과/증강 선택 등 전투 비활성 구간 여부
-  private isBetweenRounds: boolean = false;
 
   // 증강 스냅샷: playerId -> Record<augmentId, { id, startedAt }>
   private augmentByPlayer: Map<
     string,
     Record<string, { id: string; startedAt: number }>
   > = new Map();
-  // 퍼포먼스 모니터링
-  private performanceTimer: number = 0;
-  private frameCount: number = 0;
 
   constructor() {
     super({ key: "GameScene" });
@@ -654,337 +644,6 @@ export default class GameScene extends Phaser.Scene {
     remotePlayer.animationState.shootRecoil += 1.0;
     remotePlayer.animationState.wobble += 1.0;
   }
-  // ☆ 이알 충돌 처리
-  private handleBulletHit(hitData: any): void {
-    // 충돌 파티클
-    this.createParticleEffect(hitData.x, hitData.y, true);
-
-    if (hitData.targetPlayerId === this.myPlayerId) {
-      // 내가 맞은 경우 - 서버에서 체력 업데이트를 기다림
-      this.shakeCamera(200, 0.01);
-      // 슬로우/스턴 등 상태이상 로컬 연출 (서버도 방송함)
-      // 끈적여요: 슬로우
-      try {
-        const aug = this.augmentByPlayer.get(hitData.attackerId || "") || {};
-        const defs: any[] = [] as any;
-        // 서버가 상태이상 방송을 해주므로 여기서는 보수적으로 UI 연출만 유지
-      } catch {}
-    } else {
-      // 원격 플레이어가 맞은 경우 - 서버에서 체력 업데이트를 기다림
-      const rp = this.remotePlayers.get(hitData.targetPlayerId);
-      if (rp) {
-        console.log(
-          `💥 원격 플레이어 ${rp.name} 맞음: ${hitData.damage} (서버에서 체력 업데이트 대기)`
-        );
-      }
-    }
-  }
-  // GameScene.ts 내부 아무 private 메서드 구역에 추가
-  private detectBulletHitsAgainstPlayers(): void {
-    if (!this.shootingManager) return;
-
-    const bullets: any[] = this.shootingManager.getAllBullets();
-    const myId = this.myPlayerId;
-    if (!myId) return;
-
-    // 디버깅: 총알 개수와 상태 로그
-    if (bullets.length > 0) {
-      console.log(`🔍 총알 감지 중: ${bullets.length}개, 내 ID: ${myId}`);
-    }
-
-    // 내 원형 히트박스
-    const myCircleBounds = this.player.getCircleBounds(); // 원형 히트박스 사용
-
-    // 헬퍼 - 원형 충돌 감지
-    const pointInCircle = (
-      px: number,
-      py: number,
-      circle: { x: number; y: number; radius: number }
-    ) => {
-      const distanceX = px - circle.x;
-      const distanceY = py - circle.y;
-      const distanceSquared = distanceX * distanceX + distanceY * distanceY;
-      return distanceSquared <= circle.radius * circle.radius;
-    };
-
-    for (const b of bullets) {
-      if (!b || b._hitProcessed) continue;
-
-      // 원격 총알은 충돌 감지에서 제외 (시각적으로만 보임)
-      if (b._remote) continue;
-
-      // 총알 위치 가져오기 - 여러 방법 시도
-      let bx = b.x ?? b.position?.x ?? b.body?.x;
-      let by = b.y ?? b.position?.y ?? b.body?.y;
-
-      // 스프라이트에서 직접 위치 가져오기
-      if (bx == null && b.sprite) {
-        bx = b.sprite.x;
-      }
-      if (by == null && b.sprite) {
-        by = b.sprite.y;
-      }
-
-      if (bx == null || by == null) continue;
-
-      // 디버깅: 총알 정보 로그
-      console.log(
-        `🔍 총알 체크: ID=${b.id}, 소유자=${b.ownerId}, 위치=(${bx.toFixed(
-          1
-        )}, ${by.toFixed(1)})`
-      );
-
-      let hitDetected = false;
-
-      // 원격 총알이 나를 맞춘 경우 (CollisionSystem에서 처리하므로 여기서는 제거)
-      // if (b.ownerId && b.ownerId !== myId) {
-      //   console.log(`🎯 원격 총알 체크: ${b.ownerId} -> ${myId}`);
-      //   if (pointInCircle(bx, by, myCircleBounds)) {
-      //     hitDetected = true;
-      //     b._hitProcessed = true;
-
-      //     const damage = this.shootingManager?.getDamage() ?? 25;
-      //     console.log(
-      //       `🎯 내가 맞음! 데미지: ${damage}, 총알 소유자: ${b.ownerId}`
-      //     );
-
-      //     // 서버에 타격 전송 (로컬 데미지 처리 제거)
-      //     this.networkManager?.sendBulletHit({
-      //       bulletId: b.id || `bullet_${Date.now()}`,
-      //       targetPlayerId: myId,
-      //       damage: damage,
-      //       x: bx,
-      //       y: by,
-      //     });
-
-      //     // 카메라 흔들기만 적용 (체력은 서버에서 처리)
-      //     this.shakeCamera(150, 0.008);
-      //   }
-      // }
-
-      // 내 총알이 원격 플레이어를 맞춘 경우
-      if (!hitDetected && b.ownerId === myId) {
-        const playerIds = Array.from(this.remotePlayers.keys());
-        console.log(`🎯 내 총알 체크: ${playerIds.length}명의 원격 플레이어`);
-
-        for (let i = 0; i < playerIds.length; i++) {
-          const pid = playerIds[i];
-          const remote = this.remotePlayers.get(pid);
-          const body = remote?.gfxRefs?.body;
-          if (!body) {
-            console.log(`⚠️ 원격 플레이어 ${pid}의 body가 없음`);
-            continue;
-          }
-
-          // 원형 히트박스 사용 - 보간된 실제 위치 사용
-          const actualPosition = remote.lastPosition || {
-            x: body.x,
-            y: body.y,
-          };
-          const circleBounds = {
-            x: actualPosition.x,
-            y: actualPosition.y,
-            radius: 18, // 18px 반지름으로 통일
-          };
-
-          console.log(
-            `🎯 원격 플레이어 ${pid} 체크: 위치=(${actualPosition.x.toFixed(
-              1
-            )}, ${actualPosition.y.toFixed(1)})`
-          );
-
-          // 거리 계산 디버깅
-          const distanceX = bx - circleBounds.x;
-          const distanceY = by - circleBounds.y;
-          const distanceSquared = distanceX * distanceX + distanceY * distanceY;
-          const radiusSquared = circleBounds.radius * circleBounds.radius;
-
-          console.log(
-            `🎯 거리 계산: 총알(${bx.toFixed(1)}, ${by.toFixed(
-              1
-            )}) -> 플레이어(${circleBounds.x.toFixed(
-              1
-            )}, ${circleBounds.y.toFixed(1)})`
-          );
-          console.log(
-            `🎯 거리: ${Math.sqrt(distanceSquared).toFixed(
-              1
-            )}px, 히트박스 반지름: ${circleBounds.radius}px`
-          );
-          console.log(
-            `🎯 충돌 판정: ${distanceSquared} <= ${radiusSquared} = ${
-              distanceSquared <= radiusSquared
-            }`
-          );
-
-          if (pointInCircle(bx, by, circleBounds)) {
-            hitDetected = true;
-            b._hitProcessed = true;
-
-            const damage = this.shootingManager?.getDamage() ?? 25;
-            console.log(`🎯 상대 맞춤! 타겟: ${pid}, 데미지: ${damage}`);
-
-            this.networkManager?.sendBulletHit({
-              bulletId: b.id || `bullet_${Date.now()}`,
-              targetPlayerId: pid,
-              damage: damage,
-              x: bx,
-              y: by,
-            });
-
-            // 🐌 슬로우 상태이상: 내 증강에 slowOnHitMs/slowMul이 있으면 서버에 상태 이벤트 전송 요청
-            try {
-              const eff = this.getAugmentAggregatedEffectsForPlayer(
-                this.myPlayerId!
-              );
-              if (eff && eff.bullet.slowOnHitMs > 0) {
-                const names = findAugmentNamesWithEffect(
-                  this.augmentByPlayer.get(this.myPlayerId!) || {},
-                  (d) => !!d.effects?.bullet?.slowOnHitMs
-                );
-                try {
-                  console.log(
-                    `🧩 증강 함수 발동: 슬로우(${
-                      names.join(", ") || "알수없음"
-                    }) → ${pid}`
-                  );
-                } catch {}
-                this.networkManager?.sendGameEvent({
-                  type: "status",
-                  playerId: pid,
-                  data: {
-                    status: "slow",
-                    multiplier: eff.bullet.slowMul || 0.7,
-                    ms: eff.bullet.slowOnHitMs || 1500,
-                  },
-                } as any);
-              }
-              // ⚡ 스턴 상태이상: stunMs가 있으면 서버에 상태 이벤트 전송 요청
-              if (eff && eff.bullet.stunMs > 0) {
-                const names = findAugmentNamesWithEffect(
-                  this.augmentByPlayer.get(this.myPlayerId!) || {},
-                  (d) => !!d.effects?.bullet?.stunMs
-                );
-                try {
-                  console.log(
-                    `🧩 증강 함수 발동: 스턴(${
-                      names.join(", ") || "알수없음"
-                    }) → ${pid}`
-                  );
-                } catch {}
-                this.networkManager?.sendGameEvent({
-                  type: "status",
-                  playerId: pid,
-                  data: { status: "stun", ms: eff.bullet.stunMs },
-                } as any);
-              }
-              // 💨 넉백: 증강 knockbackMul이 1보다 크면 방향 임펄스 전송
-              if (eff && (eff.bullet.knockbackMul || 1) > 1) {
-                const names = findAugmentNamesWithEffect(
-                  this.augmentByPlayer.get(this.myPlayerId!) || {},
-                  (d) => !!d.effects?.bullet?.knockbackMul
-                );
-                try {
-                  console.log(
-                    `🧩 증강 함수 발동: 넉백(${
-                      names.join(", ") || "알수없음"
-                    }) → ${pid}`
-                  );
-                } catch {}
-                const impulseBase = 400; // 기본 임펄스 크기
-                const impulse = impulseBase * (eff.bullet.knockbackMul || 1);
-                const rp = this.remotePlayers.get(pid);
-                const target = rp?.lastPosition || { x: bx, y: by };
-                const dx = target.x - bx || 0.0001;
-                const dy = target.y - by || 0.0001;
-                const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const ux = dx / len;
-                const uy = dy / len;
-                this.networkManager?.sendGameEvent({
-                  type: "status",
-                  playerId: pid,
-                  data: {
-                    status: "knockback",
-                    vx: ux * impulse,
-                    vy: uy * impulse,
-                    ms: 0,
-                  },
-                } as any);
-              }
-              // 💚 라이프스틸: lifestealOnHit가 있으면 나에게 힐 요청
-              if (
-                eff &&
-                (eff.player.lifestealOnHit || 0) > 0 &&
-                this.myPlayerId
-              ) {
-                const healAmount = eff.player.lifestealOnHit;
-                const names = findAugmentNamesWithEffect(
-                  this.augmentByPlayer.get(this.myPlayerId!) || {},
-                  (d) => !!d.effects?.player?.lifestealOnHit
-                );
-                try {
-                  console.log(
-                    `🧩 증강 함수 발동: 라이프스틸(${
-                      names.join(", ") || "알수없음"
-                    }) +${healAmount}`
-                  );
-                } catch {}
-                this.networkManager?.sendGameEvent({
-                  type: "heal",
-                  playerId: this.myPlayerId,
-                  data: { amount: healAmount },
-                });
-                // 로컬 낙관적 반영
-                try {
-                  const cur = this.player.getHealth();
-                  this.player.setHealth(Math.min(100, cur + healAmount));
-                } catch {}
-              }
-            } catch {}
-
-            break;
-          }
-        }
-      }
-
-      // 충돌이 감지되었으면 총알 제거 (원격 총알은 제거하지 않음)
-      if (hitDetected && b && !b._remote) {
-        console.log(`🎯 총알 히트! 총알 ID: ${b.id}, 위치: (${bx}, ${by})`);
-
-        // 총알 제거 - 여러 방법 시도
-        if (typeof b.hit === "function") {
-          b.hit(bx, by);
-        }
-
-        // 추가로 총알 비활성화
-        if (typeof b.destroy === "function") {
-          b.destroy(true);
-        }
-
-        // 총알 스프라이트 직접 제거
-        if (b.sprite && typeof b.sprite.destroy === "function") {
-          b.sprite.destroy(true);
-        }
-
-        // 총알 물리 바디 비활성화
-        if (b.body && typeof b.body.disable === "function") {
-          b.body.disable();
-        }
-
-        // 총알을 비활성 상태로 설정
-        b._active = false;
-        b._hitProcessed = true;
-
-        // 총알 그룹에서 제거
-        if (this.shootingManager) {
-          const bulletGroup = this.shootingManager.getBulletGroup();
-          if (bulletGroup && b.sprite) {
-            bulletGroup.remove(b.sprite, true, true);
-          }
-        }
-      }
-    }
-  }
 
   // 증강 집계 효과를 조회 (ShootingManager와 동일 규칙)
   private getAugmentAggregatedEffectsForPlayer(playerId: string): any {
@@ -1062,19 +721,7 @@ export default class GameScene extends Phaser.Scene {
             }
           } else if (data.status === "knockback") {
             if (pid === this.myPlayerId && this.player) {
-              const p: any = this.player as any;
-              const vx = data.vx ?? 0;
-              const vy = data.vy ?? 0;
-              try {
-                if (p.body?.setVelocity) {
-                  p.body.setVelocity(
-                    (p.body.velocity?.x || 0) + vx,
-                    (p.body.velocity?.y || 0) + vy
-                  );
-                } else if (p.setVelocity) {
-                  p.setVelocity((p.vx || 0) + vx, (p.vy || 0) + vy);
-                }
-              } catch {}
+              this.player.applyImpulse(Number(data.vx) || 0, Number(data.vy) || 0);
             }
           }
         } catch {}
@@ -1658,14 +1305,6 @@ export default class GameScene extends Phaser.Scene {
     return colorMap[hexColor.toUpperCase()] || "기본";
   }
 
-  // ☆ 멀티플레이어 UI 업데이트
-  private updateMultiplayerUI(): void {
-    if (!this.gameData || !this.uiManager) return;
-
-    const playerCount = this.gameData.players.length;
-    const roomName = this.gameData.room.roomName;
-  }
-
   // ☆ 로딩 모달 상태 업데이트
   private updateLoadingModalState(): void {
     if (!this.isLoadingModalOpen || !this.gameData) return;
@@ -1719,59 +1358,6 @@ export default class GameScene extends Phaser.Scene {
       x: interpolation.currentX,
       y: interpolation.currentY,
     };
-  }
-
-  // ☆ 원격 플레이어 애니메이션 상태 업데이트 (로컬 플레이어와 동일한 로직)
-  private updateRemotePlayerAnimationState(
-    remotePlayer: RemotePlayer,
-    deltaTime: number
-  ): void {
-    const anim = remotePlayer.animationState;
-    const network = remotePlayer.networkState;
-    const dt = deltaTime / 1000;
-    const now = Date.now();
-    const time = now * 0.01;
-
-    // 부드러운 애니메이션 파라미터 업데이트
-    if (network.isWallGrabbing) {
-      // 벽잡기 시 팔을 벽 쪽으로 뻗기
-      const wallDirection = network.facing === "right" ? 1 : -1;
-      anim.armSwing = wallDirection * 15;
-    } else if (network.isCrouching) {
-      // 웅크리기 시 팔을 아래로
-      anim.armSwing = Math.sin(time * 0.3) * 3;
-    } else if (Math.abs(remotePlayer.interpolation.targetVX) > 10) {
-      // 걷기/뛰기 시 팔 흔들기
-      anim.armSwing = Math.sin(time * 0.5) * 8;
-    } else {
-      // 가만히 있을 때도 자연스러운 팔 움직임
-      anim.armSwing = Math.sin(time * 0.2) * 3 + Math.sin(time * 0.1) * 2;
-    }
-
-    // 다리 애니메이션은 drawLimbs에서 자동 처리됨 (로컬과 동일)
-
-    // 부드러운 흔들림
-    anim.wobble = Math.sin(time * 0.3) * 0.5;
-    anim.shootRecoil *= 0.8;
-
-    // 사격 상태 업데이트
-    anim.isShooting = now - anim.lastShotTime < 200;
-
-    // 체력바는 상시 표시이므로 타이머 업데이트 제거
-
-    // 마우스 위치가 없거나 오래된 경우 방향 기반으로 추정 업데이트
-    const { x, y } = remotePlayer.lastPosition;
-    if (
-      !network.mouseX ||
-      !network.mouseY ||
-      now - remotePlayer.lastUpdate > 1000
-    ) {
-      // 방향 기반으로 마우스 위치 추정 (더 자연스러운 각도)
-      const angle = Math.random() * Math.PI * 2; // 랜덤 각도
-      const distance = 30 + Math.random() * 40; // 30-70 픽셀 거리
-      network.mouseX = x + Math.cos(angle) * distance;
-      network.mouseY = y + Math.sin(angle) * distance;
-    }
   }
 
   // 원격 플레이어 체력바 렌더링
@@ -1896,165 +1482,6 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // ⭐ 간단한 팔다리 렌더링 메서드 추가 (기존 호환성용)
-  private renderSimpleLimbs(
-    refs: GfxRefs,
-    x: number,
-    y: number,
-    facing: "left" | "right",
-    color: string,
-    aimAngle?: number // ★ 추가
-  ): void {
-    const limbColor = this.parsePlayerColor(color);
-    const direction = facing === "right" ? 1 : -1;
-
-    // 왼팔
-    if (refs.leftArm) {
-      refs.leftArm.clear();
-      refs.leftArm.lineStyle(3, limbColor);
-      refs.leftArm.beginPath();
-      refs.leftArm.moveTo(x - 10 * direction, y - 5);
-      refs.leftArm.lineTo(x - 15 * direction, y + 5);
-      refs.leftArm.lineTo(x - 20 * direction, y + 15);
-      refs.leftArm.strokePath();
-    }
-
-    // 오른팔
-    if (refs.rightArm) {
-      refs.rightArm.clear();
-      refs.rightArm.lineStyle(3, limbColor);
-      refs.rightArm.beginPath();
-      refs.rightArm.moveTo(x + 10 * direction, y - 5);
-
-      if (aimAngle != null && isFinite(aimAngle)) {
-        const L = 22; // 팔 길이
-        const ex = x + 10 * direction + Math.cos(aimAngle) * L;
-        const ey = y - 5 + Math.sin(aimAngle) * L;
-        refs.rightArm.lineTo(ex, ey);
-      } else {
-        // 기존 단순 팔
-        refs.rightArm.lineTo(x + 15 * direction, y + 5);
-        refs.rightArm.lineTo(x + 20 * direction, y + 15);
-      }
-      refs.rightArm.strokePath();
-    }
-
-    // 왼다리
-    if (refs.leftLeg) {
-      refs.leftLeg.clear();
-      refs.leftLeg.lineStyle(3, limbColor);
-      refs.leftLeg.beginPath();
-      refs.leftLeg.moveTo(x - 8, y + 15);
-      refs.leftLeg.lineTo(x - 12, y + 25);
-      refs.leftLeg.lineTo(x - 10, y + 35);
-      refs.leftLeg.strokePath();
-    }
-
-    // 오른다리
-    if (refs.rightLeg) {
-      refs.rightLeg.clear();
-      refs.rightLeg.lineStyle(3, limbColor);
-      refs.rightLeg.beginPath();
-      refs.rightLeg.moveTo(x + 8, y + 15);
-      refs.rightLeg.lineTo(x + 12, y + 25);
-      refs.rightLeg.lineTo(x + 10, y + 35);
-      refs.rightLeg.strokePath();
-    }
-  }
-
-  // ☆ 신체 부위 렌더링 헬퍼
-  private renderLimb(
-    limbGfx: any,
-    bodyX: number,
-    bodyY: number,
-    keyframe: LimbKeyframe,
-    color: string
-  ): void {
-    if (!limbGfx) return;
-
-    limbGfx.clear();
-    limbGfx.lineStyle(3, this.parsePlayerColor(color));
-
-    // 어깨/엉덩이 → 팔꿈치/무릎 → 손/발 순으로 그리기
-    limbGfx.beginPath();
-    limbGfx.moveTo(bodyX + keyframe.hip.x, bodyY + keyframe.hip.y);
-    limbGfx.lineTo(bodyX + keyframe.knee.x, bodyY + keyframe.knee.y);
-    limbGfx.lineTo(bodyX + keyframe.foot.x, bodyY + keyframe.foot.y);
-    limbGfx.strokePath();
-  }
-
-  // ☆ 애니메이션된 얼굴 렌더링
-  private renderAnimatedFace(
-    faceGfx: any,
-    x: number,
-    y: number,
-    facing: "left" | "right",
-    networkState: any
-  ): void {
-    if (!faceGfx) return;
-
-    faceGfx.clear();
-    faceGfx.fillStyle(0x000000);
-
-    const eyeOffset = facing === "right" ? 5 : -5;
-    const time = Date.now() * 0.01;
-
-    // 상태에 따른 표정 변화
-    let eyeSize = 2;
-    let mouthY = y + 2;
-    let mouthWidth = 0;
-
-    if (networkState.isJumping) {
-      // 점프 시 놀란 표정
-      eyeSize = 3;
-      mouthY = y + 1;
-      mouthWidth = 4;
-    } else if (networkState.isWallGrabbing) {
-      // 벽잡기 시 집중한 표정
-      eyeSize = 1.5;
-      mouthY = y + 3;
-      mouthWidth = 2;
-    } else if (networkState.isCrouching) {
-      // 웅크리기 시 긴장한 표정
-      eyeSize = 2.5;
-      mouthY = y + 2;
-      mouthWidth = 3;
-    } else {
-      // 일반 상태 - 깜빡임 애니메이션
-      const blink = Math.sin(time * 0.1) > 0.8 ? 0 : eyeSize;
-      eyeSize = blink;
-    }
-
-    // 눈 그리기
-    if (eyeSize > 0) {
-      faceGfx.fillCircle(x - eyeOffset, y - 5, eyeSize); // 왼쪽 눈
-      faceGfx.fillCircle(x + eyeOffset, y - 5, eyeSize); // 오른쪽 눈
-    }
-
-    // 입 그리기 (상태에 따라)
-    if (mouthWidth > 0) {
-      faceGfx.fillRect(x - mouthWidth / 2, mouthY, mouthWidth, 1);
-    }
-  }
-
-  // ☆ 기본 얼굴 렌더링 (기존 호환성용)
-  private renderFace(
-    faceGfx: any,
-    x: number,
-    y: number,
-    facing: "left" | "right"
-  ): void {
-    if (!faceGfx) return;
-
-    faceGfx.clear();
-    faceGfx.fillStyle(0x000000);
-
-    // 눈 그리기
-    const eyeOffset = facing === "right" ? 5 : -5;
-    faceGfx.fillCircle(x - eyeOffset, y - 5, 2); // 왼쪽 눈
-    faceGfx.fillCircle(x + eyeOffset, y - 5, 2); // 오른쪽 눈
-  }
-
   // ☆ 색상 파싱 헬퍼
   private parsePlayerColor(colorStr: string): number {
     if (typeof colorStr === "string" && colorStr.startsWith("#")) {
@@ -2164,7 +1591,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // 사격 시스템 충돌 설정
-    this.shootingManager.setupCollisions(this.platformGroup);
+    // 총알↔플랫폼 충돌은 CollisionSystem 한 곳에서만 처리 (유령/바운스 규칙 포함)
 
     // ☆ 사격 이벤트 콜백 설정 (네트워크 전송 추가)
     this.setupShootingCallbacks();
@@ -2251,50 +1678,6 @@ export default class GameScene extends Phaser.Scene {
 
     //   Debug.log.debug(LogCategory.GAME, `이알 명중: (${x}, ${y})`);
     // });
-  }
-
-  // ☆ 특정 위치에서 플레이어 찾기
-  private findPlayerAtPosition(x: number, y: number): string | null {
-    // 내 플레이어 체크
-    const myBounds = this.player.getBounds();
-    if (
-      x >= myBounds.x &&
-      x <= myBounds.x + myBounds.width &&
-      y >= myBounds.y &&
-      y <= myBounds.y + myBounds.height
-    ) {
-      return this.myPlayerId;
-    }
-
-    // 원격 플레이어들 체크 (ES5 호환)
-    const playerIds = Array.from(this.remotePlayers.keys());
-    for (let i = 0; i < playerIds.length; i++) {
-      const playerId = playerIds[i];
-      const remotePlayer = this.remotePlayers.get(playerId);
-      if (!remotePlayer) continue;
-
-      // 원격 플레이어는 gfxRefs의 body 위치로 판정
-      const body = remotePlayer.gfxRefs.body;
-      if (body) {
-        const bounds = {
-          x: body.x - 20, // 몸통 반지름
-          y: body.y - 20,
-          width: 40,
-          height: 40,
-        };
-
-        if (
-          x >= bounds.x &&
-          x <= bounds.x + bounds.width &&
-          y >= bounds.y &&
-          y <= bounds.y + bounds.height
-        ) {
-          return playerId;
-        }
-      }
-    }
-
-    return null;
   }
 
   private initializePhysicsGroups(): void {
@@ -2590,15 +1973,6 @@ export default class GameScene extends Phaser.Scene {
     this.cleanupRemoteBullets();
   }
 
-  private updatePerformanceMonitoring(time: number, deltaTime: number): void {
-    this.frameCount++;
-
-    // 경고 임계값 체크
-    if (deltaTime > PERFORMANCE_CONSTANTS.UPDATE_INTERVALS.EVERY_FRAME) {
-      const fps = 1000 / deltaTime;
-    }
-  }
-
   private updatePeriodicTasks(time: number, deltaTime: number): void {
     // 디버그 게임 상태 로깅 비활성화
     // if (
@@ -2688,44 +2062,6 @@ export default class GameScene extends Phaser.Scene {
       (this.player as any).setPosition?.(playerSpawn.x, playerSpawn.y);
       (this.player as any).resetVelocity?.();
       (this.player as any).updatePlatforms?.(this.platforms);
-    }
-  }
-
-  private cullBulletsOutsideViewport(): void {
-    const cameraInfo = this.cameraManager.getCameraInfo();
-    const buffer = PERFORMANCE_CONSTANTS.CLEANUP.BULLET_BUFFER;
-
-    const bounds = {
-      left: cameraInfo.x - buffer,
-      right: cameraInfo.x + cameraInfo.width + buffer,
-      top: cameraInfo.y - buffer,
-      bottom: cameraInfo.y + cameraInfo.height + buffer,
-    };
-
-    const initialCount = this.bullets.length;
-    this.bullets = this.bullets.filter((bullet) => {
-      const inBounds =
-        bullet.x >= bounds.left &&
-        bullet.x <= bounds.right &&
-        bullet.y >= bounds.top &&
-        bullet.y <= bounds.bottom;
-
-      if (!inBounds && "gameObject" in bullet && bullet.gameObject) {
-        (bullet.gameObject as any).destroy();
-      }
-
-      return inBounds;
-    });
-
-    // 최대 이알 수 제한
-    if (this.bullets.length > PERFORMANCE_CONSTANTS.CLEANUP.MAX_BULLETS) {
-      const excess =
-        this.bullets.length - PERFORMANCE_CONSTANTS.CLEANUP.MAX_BULLETS;
-      this.bullets.splice(0, excess).forEach((bullet) => {
-        if ("gameObject" in bullet && bullet.gameObject) {
-          (bullet.gameObject as any).destroy();
-        }
-      });
     }
   }
 
@@ -3096,25 +2432,6 @@ export default class GameScene extends Phaser.Scene {
     return;
   }
 
-  // 에러 처리
-  private handleError(error: Error, context: string): void {
-    this.sceneState = GAME_STATE.SCENE_STATES.ERROR;
-
-    // 에러 발생 시 기본 상태로 복구 시도
-    try {
-      // 안전한 상태로 되돌리기
-      this.setInputEnabled(false);
-
-      // 기본 맵으로 리셋 시도
-      setTimeout(() => {
-        this.resetScene();
-      }, 1000);
-    } catch (resetError) {
-      // 최후의 수단: 씬 재시작
-      this.scene.restart();
-    }
-  }
-
   // Phaser Scene 생명주기 - shutdown
   private hasShutDown = false;
   shutdown(): void {
@@ -3418,5 +2735,144 @@ export default class GameScene extends Phaser.Scene {
     });
 
     return bestSpawn;
+  }
+
+  // 라운드 결과/증강 선택 등 전투 비활성 구간 여부
+  private isBetweenRounds: boolean = false;
+  // 퍼포먼스 모니터링
+  private performanceTimer: number = 0;
+  private frameCount: number = 0;
+  // ☆ 이알 충돌 처리
+  private handleBulletHit(hitData: any): void {
+    // 충돌 파티클
+    this.createParticleEffect(hitData.x, hitData.y, true);
+
+    if (hitData.targetPlayerId === this.myPlayerId) {
+      // 내가 맞은 경우 - 서버에서 체력 업데이트를 기다림
+      this.shakeCamera(200, 0.01);
+      // 슬로우/스턴 등 상태이상 로컬 연출 (서버도 방송함)
+      // 끈적여요: 슬로우
+      try {
+        const aug = this.augmentByPlayer.get(hitData.attackerId || "") || {};
+        const defs: any[] = [] as any;
+        // 서버가 상태이상 방송을 해주므로 여기서는 보수적으로 UI 연출만 유지
+      } catch {}
+    } else {
+      // 원격 플레이어가 맞은 경우 - 서버에서 체력 업데이트를 기다림
+      const rp = this.remotePlayers.get(hitData.targetPlayerId);
+      if (rp) {
+        console.log(
+          `💥 원격 플레이어 ${rp.name} 맞음: ${hitData.damage} (서버에서 체력 업데이트 대기)`
+        );
+      }
+    }
+  }
+
+  // ☆ 멀티플레이어 UI 업데이트
+  private updateMultiplayerUI(): void {
+    if (!this.gameData || !this.uiManager) return;
+
+    const playerCount = this.gameData.players.length;
+    const roomName = this.gameData.room.roomName;
+  }
+
+  // ☆ 원격 플레이어 애니메이션 상태 업데이트 (로컬 플레이어와 동일한 로직)
+  private updateRemotePlayerAnimationState(
+    remotePlayer: RemotePlayer,
+    deltaTime: number
+  ): void {
+    const anim = remotePlayer.animationState;
+    const network = remotePlayer.networkState;
+    const dt = deltaTime / 1000;
+    const now = Date.now();
+    const time = now * 0.01;
+
+    // 부드러운 애니메이션 파라미터 업데이트
+    if (network.isWallGrabbing) {
+      // 벽잡기 시 팔을 벽 쪽으로 뻗기
+      const wallDirection = network.facing === "right" ? 1 : -1;
+      anim.armSwing = wallDirection * 15;
+    } else if (network.isCrouching) {
+      // 웅크리기 시 팔을 아래로
+      anim.armSwing = Math.sin(time * 0.3) * 3;
+    } else if (Math.abs(remotePlayer.interpolation.targetVX) > 10) {
+      // 걷기/뛰기 시 팔 흔들기
+      anim.armSwing = Math.sin(time * 0.5) * 8;
+    } else {
+      // 가만히 있을 때도 자연스러운 팔 움직임
+      anim.armSwing = Math.sin(time * 0.2) * 3 + Math.sin(time * 0.1) * 2;
+    }
+
+    // 다리 애니메이션은 drawLimbs에서 자동 처리됨 (로컬과 동일)
+
+    // 부드러운 흔들림
+    anim.wobble = Math.sin(time * 0.3) * 0.5;
+    anim.shootRecoil *= 0.8;
+
+    // 사격 상태 업데이트
+    anim.isShooting = now - anim.lastShotTime < 200;
+
+    // 체력바는 상시 표시이므로 타이머 업데이트 제거
+
+    // 마우스 위치가 없거나 오래된 경우 방향 기반으로 추정 업데이트
+    const { x, y } = remotePlayer.lastPosition;
+    if (
+      !network.mouseX ||
+      !network.mouseY ||
+      now - remotePlayer.lastUpdate > 1000
+    ) {
+      // 방향 기반으로 마우스 위치 추정 (더 자연스러운 각도)
+      const angle = Math.random() * Math.PI * 2; // 랜덤 각도
+      const distance = 30 + Math.random() * 40; // 30-70 픽셀 거리
+      network.mouseX = x + Math.cos(angle) * distance;
+      network.mouseY = y + Math.sin(angle) * distance;
+    }
+  }
+
+  private updatePerformanceMonitoring(time: number, deltaTime: number): void {
+    this.frameCount++;
+
+    // 경고 임계값 체크
+    if (deltaTime > PERFORMANCE_CONSTANTS.UPDATE_INTERVALS.EVERY_FRAME) {
+      const fps = 1000 / deltaTime;
+    }
+  }
+
+  private cullBulletsOutsideViewport(): void {
+    const cameraInfo = this.cameraManager.getCameraInfo();
+    const buffer = PERFORMANCE_CONSTANTS.CLEANUP.BULLET_BUFFER;
+
+    const bounds = {
+      left: cameraInfo.x - buffer,
+      right: cameraInfo.x + cameraInfo.width + buffer,
+      top: cameraInfo.y - buffer,
+      bottom: cameraInfo.y + cameraInfo.height + buffer,
+    };
+
+    const initialCount = this.bullets.length;
+    this.bullets = this.bullets.filter((bullet) => {
+      const inBounds =
+        bullet.x >= bounds.left &&
+        bullet.x <= bounds.right &&
+        bullet.y >= bounds.top &&
+        bullet.y <= bounds.bottom;
+
+      if (!inBounds && "gameObject" in bullet && bullet.gameObject) {
+        (bullet.gameObject as any).destroy();
+      }
+
+      return inBounds;
+    });
+
+    // 최대 이알 수 제한
+    if (this.bullets.length > PERFORMANCE_CONSTANTS.CLEANUP.MAX_BULLETS) {
+      const excess =
+        this.bullets.length - PERFORMANCE_CONSTANTS.CLEANUP.MAX_BULLETS;
+      this.bullets.splice(0, excess).forEach((bullet) => {
+        if ("gameObject" in bullet && bullet.gameObject) {
+          (bullet.gameObject as any).destroy();
+        }
+      });
+    }
   }
 }

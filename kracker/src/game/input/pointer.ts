@@ -1,5 +1,4 @@
-// src/game/input/pointer.ts
-import { PointerState } from "../types/player.types";
+
 
 export interface PointerHandle {
   getPointer: () => { x: number; y: number };

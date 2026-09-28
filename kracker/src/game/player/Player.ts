@@ -29,7 +29,6 @@ import { integrate, dampen } from "../physics/kinematics";
 import {
   resolveCollisions,
   computePlayerBounds,
-  checkOverlap,
 } from "../physics/collisions";
 
 import {
@@ -115,7 +114,6 @@ export default class Player {
   // 동적 색상 그라데이션 관련
   private colorAnimationTime = 0;
   private colorAnimationSpeed = 0.02;
-  private baseColor: number;
   private dynamicColors: number[] = [];
   private isGameScene = false;
 
@@ -224,6 +222,13 @@ export default class Player {
   }
 
   // ========== 내부 유틸 ==========
+
+  // 넉백 등 외부 충격 (px/s)
+  public applyImpulse(vx: number, vy: number): void {
+    this.velocityX += vx;
+    this.velocityY += vy;
+    if (vy < 0) this.isGrounded = false;
+  }
 
   // 사망/스턴/라운드 전환 중 입력 차단 (GameScene.setInputEnabled 가 제어)
   public inputLocked = false;
@@ -451,7 +456,8 @@ export default class Player {
           GAME_CONFIG.playerSpeed * moveMul * speedMul * this.moveSpeedMul;
         this.legSwing += 0.3;
       } else {
-        this.velocityX = dampen(this.velocityX, 0.8, 10);
+        // 60fps 기준 0.8 감쇠를 프레임레이트와 무관하게 적용
+        this.velocityX = dampen(this.velocityX, Math.pow(0.8, deltaMs / (1000 / 60)), 10);
       }
 
       // 점프 처리: 지상/공중(추가 점프) 모두 지원
@@ -1246,4 +1252,6 @@ export default class Player {
 
     console.log("✅ 플레이어 정리 완료");
   }
+
+  private baseColor: number;
 }

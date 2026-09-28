@@ -99,8 +99,6 @@ export class CameraManager {
   // 카메라 상태
   private isShaking: boolean = false;
   private currentZoom: number = 1;
-  private targetZoom: number = 1;
-  private zoomTween?: Phaser.Tweens.Tween;
 
   constructor(scene: Phaser.Scene, config?: Partial<CameraConfig>) {
     this.scene = scene;
@@ -108,16 +106,6 @@ export class CameraManager {
     this.config = { ...DEFAULT_CAMERA_CONFIG, ...config };
 
     Debug.log.info(LogCategory.CAMERA, "CameraManager 초기화됨");
-  }
-
-  // 기존 setupCamera 메서드 (변경 없음)
-  private setupCamera(): void {
-    this.camera.setZoom(this.config.zoom.default);
-    this.currentZoom = this.config.zoom.default;
-    this.targetZoom = this.config.zoom.default;
-    this.camera.setBackgroundColor("rgba(0,0,0,0)");
-
-    Debug.log.debug(LogCategory.CAMERA, "기본 카메라 설정 완료");
   }
 
   // ⭐ 카메라 정보 가져오기 - 쉐이더 정보 추가

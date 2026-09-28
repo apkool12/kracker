@@ -137,27 +137,6 @@ export class DebugRenderer {
     this.debugObjects.set(key, hitbox);
   }
 
-  private drawCustomHitbox(bounds: any, type: string): void {
-    // 타입별로 고유한 키 생성 (위치 기반이 아닌 타입 기반)
-    const key = type;
-
-    // 기존 히트박스가 있으면 제거
-    if (this.debugObjects.has(key)) {
-      this.debugObjects.get(key)?.destroy();
-      this.debugObjects.delete(key);
-    }
-
-    // 새로운 히트박스 생성 (사각형 - 호환성을 위해 유지)
-    const hitbox = this.scene.add.graphics();
-    hitbox.lineStyle(2, 0xff0000); // 빨간색 테두리
-    hitbox.fillStyle(0xff0000, 0.3); // 빨간색 채우기, 투명도 0.3
-    hitbox.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    hitbox.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    hitbox.setDepth(1001); // 그래픽보다 위에 표시
-
-    this.debugObjects.set(key, hitbox);
-  }
-
   private clearAllDebugObjects(): void {
     this.debugObjects.forEach((hitbox) => {
       hitbox.destroy();
