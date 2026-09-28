@@ -8,6 +8,12 @@ import {
 
 export class ShadowCalculator {
   private lightConfig: LightConfig;
+  // 점광원(총알/섬광). 있으면 방향광 대신 이 위치 기준으로 그림자를 드리운다
+  private pointLight: { x: number; y: number } | null = null;
+
+  public setPointLight(p: { x: number; y: number } | null): void {
+    this.pointLight = p;
+  }
 
   constructor(lightConfig: LightConfig) {
     this.lightConfig = { ...lightConfig };
@@ -29,6 +35,12 @@ export class ShadowCalculator {
 
     for (let i = 0; i < platforms.length; i++) {
       const platform = platforms[i];
+      if (this.pointLight) {
+        for (const poly of this.calculatePointLightShadow(platform, this.pointLight)) {
+          polygons.push({ ...poly, platformId: `platform_${i}` });
+        }
+        continue;
+      }
       const shadowPolygon = this.calculateLongTrapezoidShadow(
         platform,
         shadowTargetY
@@ -171,6 +183,38 @@ export class ShadowCalculator {
     return { points };
   }
 
+
+  /** 점광원 그림자: 플랫폼 네 변을 광원 반대 방향으로 길게 밀어낸 사각형들의 합집합 */
+  private calculatePointLightShadow(
+    platform: Platform,
+    light: { x: number; y: number }
+  ): ShadowPolygon[] {
+    const { x, y, width: w, height: h } = platform;
+    // 광원이 플랫폼 안이면 그림자 없음
+    if (light.x > x && light.x < x + w && light.y > y && light.y < y + h) return [];
+    const len = this.lightConfig.maxLength || 1500;
+    const corners = [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + h },
+      { x, y: y + h },
+    ];
+    const far = (p: { x: number; y: number }) => {
+      const dx = p.x - light.x;
+      const dy = p.y - light.y;
+      const d = Math.hypot(dx, dy) || 1;
+      return { x: p.x + (dx / d) * len, y: p.y + (dy / d) * len };
+    };
+    const out: ShadowPolygon[] = [];
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i]!;
+      const b = corners[(i + 1) % 4]!;
+      const fa = far(a);
+      const fb = far(b);
+      out.push({ points: [a.x, a.y, b.x, b.y, fb.x, fb.y, fa.x, fa.y] });
+    }
+    return out;
+  }
 
   private getLightDirection(): { x: number; y: number } {
     const radian = (this.lightConfig.angle * Math.PI) / 180;

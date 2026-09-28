@@ -71,6 +71,10 @@ export class ShadowSystem {
   }
 
   /** 빛 각도 즉시 변경 */
+  public setPointLight(p: { x: number; y: number } | null): void {
+    this.renderer.setPointLight(p);
+  }
+
   public setLightAngle(angle: number): void {
     if (!this.isInitialized) return;
 

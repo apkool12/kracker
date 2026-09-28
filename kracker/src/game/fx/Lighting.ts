@@ -152,9 +152,28 @@ export class LightingSystem {
 
     p.lights = lights;
     p.colors = colors;
-    p.rects = this.getPlatforms()
-      .slice(0, MAX_RECTS)
-      .flatMap((r) => [sx(r.x), sy(r.y), sx(r.x + r.width), sy(r.y + r.height)]);
+    // 플랫폼 그림자는 기존 사다리꼴 그림자 시스템(ShadowRenderer)이 담당 → 셰이더 가림 판정은 옵션
+    p.rects = this.occlusion
+      ? this.getPlatforms()
+          .slice(0, MAX_RECTS)
+          .flatMap((r) => [sx(r.x), sy(r.y), sx(r.x + r.width), sy(r.y + r.height)])
+      : [];
+  }
+
+  /** 셰이더에서도 플랫폼 가림(빛줄기) 계산할지 */
+  occlusion = false;
+
+  /** 지금 가장 밝은 광원 (그림자 시스템의 점광원으로 사용). 없으면 null */
+  getDominantLight(): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestI = 0;
+    for (const f of this.flashes) {
+      const i = f.intensity * (f.life / f.ttl);
+      if (i > bestI) (bestI = i), (best = { x: f.x, y: f.y });
+    }
+    if (best) return best;
+    const first = this.seen.values().next().value;
+    return first ? { x: first.x, y: first.y } : null;
   }
 
   destroy() {
