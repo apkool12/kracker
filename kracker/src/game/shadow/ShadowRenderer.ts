@@ -8,6 +8,9 @@ import {
   LightConfig,
 } from "./ShadowTypes";
 
+// 그림자 캔버스 해상도 배율 (0.5 = 절반)
+const SHADOW_RES = 0.5;
+
 export class ShadowRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
@@ -56,8 +59,8 @@ export class ShadowRenderer {
 
   /** 🎯 Canvas 기반 블렌드 없는 그림자 시스템 */
   private initializeCanvasShadowSystem(): void {
-    const width = this.scene.sys.game.canvas.width;
-    const height = this.scene.sys.game.canvas.height;
+    const width = Math.ceil(this.scene.sys.game.canvas.width * SHADOW_RES);
+    const height = Math.ceil(this.scene.sys.game.canvas.height * SHADOW_RES);
 
     // Canvas 생성
     this.shadowCanvas = document.createElement("canvas");
@@ -86,6 +89,7 @@ export class ShadowRenderer {
     this.shadowImage.setOrigin(0, 0);
     this.shadowImage.setDepth(this.config.depth);
     this.shadowImage.setScrollFactor(0, 0); // 화면 고정
+    this.shadowImage.setScale(1 / SHADOW_RES); // 절반 해상도로 그려 확대 (비용↓, 가장자리 부드럽게)
     this.shadowImage.setAlpha(0.5); // 🔧 적절한 투명도
   }
 
@@ -152,6 +156,7 @@ export class ShadowRenderer {
     );
 
     // 🎯 Step 2: 단일 패스로 모든 그림자를 하나의 모양으로 그리기
+    this.shadowCtx.setTransform(SHADOW_RES, 0, 0, SHADOW_RES, 0, 0);
     this.shadowCtx.fillStyle = "#ffffff"; // 흰색 마스크
     this.shadowCtx.globalCompositeOperation = "source-over"; // 기본 합성
 
@@ -196,6 +201,7 @@ export class ShadowRenderer {
 
     // 한 번에 모든 그림자 채우기
     this.shadowCtx.fill();
+    this.shadowCtx.setTransform(1, 0, 0, 1, 0, 0);
 
     // 🎯 Step 3: 텍스처 업데이트 및 색상 적용
     this.shadowTexture.refresh();
@@ -222,6 +228,17 @@ export class ShadowRenderer {
     if (this.shadowImage) {
       this.shadowImage.setVisible(false);
     }
+  }
+
+  /** 점광원 설정: 광원이 있거나 바뀌면 스로틀 없이 다음 update 에서 다시 그림 */
+  private pointLightKey = "";
+  public setPointLight(p: { x: number; y: number } | null): void {
+    const key = p ? `${Math.round(p.x)},${Math.round(p.y)}` : "";
+    if (key === this.pointLightKey) return;
+    this.pointLightKey = key;
+    this.calculator.setPointLight(p);
+    this.lastUpdateTime = 0;
+    this.lastCameraHash = "";
   }
 
   /** 빛 각도 변경 */
@@ -264,8 +281,8 @@ export class ShadowRenderer {
   public handleResize(width: number, height: number): void {
     // Canvas 크기 조정
     if (this.shadowCanvas) {
-      this.shadowCanvas.width = width;
-      this.shadowCanvas.height = height;
+      this.shadowCanvas.width = Math.ceil(width * SHADOW_RES);
+      this.shadowCanvas.height = Math.ceil(height * SHADOW_RES);
     }
 
     // 그림자 이미지 위치 재조정

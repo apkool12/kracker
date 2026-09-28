@@ -1292,6 +1292,8 @@ export default class GameScene extends Phaser.Scene {
     const dt = deltaTime / 1000;
 
     this.lighting?.update(deltaTime);
+    // 총알/섬광이 있으면 그쪽을 광원으로 플랫폼 그림자 방향이 바뀜
+    this.mapRenderer?.setShadowPointLight(this.lighting?.getDominantLight() ?? null);
 
     // 플레이어 업데이트
     if (this.player && this.player.update) {

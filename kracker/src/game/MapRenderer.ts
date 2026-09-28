@@ -300,6 +300,11 @@ export default class MapRenderer {
     this.shadowSystem.update(this.platforms, cameraInfo);
   }
 
+  /** 총알/섬광 광원 위치 (null 이면 기본 방향광 그림자) */
+  public setShadowPointLight(p: { x: number; y: number } | null): void {
+    this.shadowSystem.setPointLight(p);
+  }
+
   /** 그림자 강제 업데이트 */
   public forceShadowUpdate(): void {
     const camera = this.scene.cameras.main;
