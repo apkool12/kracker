@@ -689,6 +689,9 @@ export default class Player {
       health: this.health,
       maxHealth: this.maxHealth,
       isWallGrabbing: this.wall.isWallGrabbing,
+      velocityY: this.velocityY,
+      isGrounded: this.isGrounded,
+      facing: this.facingDirection,
     });
 
     drawLimbs(this.gfx, {

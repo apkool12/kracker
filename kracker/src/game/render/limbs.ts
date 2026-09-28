@@ -1,4 +1,5 @@
 // src/game/render/limbs.ts
+import { motionTime, blendKeyframe } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { drawGun } from "./gun";
 import {
@@ -485,15 +486,16 @@ export function drawLimbs(
     isJumping
   );
 
+  // 상태별 재생 시각(점프=경과시간, 걷기=이동거리) + 전환 크로스페이드
   const animationState: AnimationState = {
     facing,
-    currentTime,
+    currentTime: motionTime(refs, animationType, currentTime, x),
     animationType,
     wallGrabDirection,
   };
 
   // 현재 키프레임 가져오기
-  const currentKeyframe = getCurrentKeyframe(animationState);
+  const currentKeyframe = blendKeyframe(refs, getCurrentKeyframe(animationState), currentTime);
 
   // 크라우치 오프셋 적용
   const crouchOffset = crouchHeight * baseCrouchOffset;
