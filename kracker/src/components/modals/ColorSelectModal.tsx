@@ -1,3 +1,5 @@
+import AccessoryIcon from "../icons/AccessoryIcon";
+import { ACCESSORIES } from "../../game/render/accessory";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 
@@ -5,7 +7,7 @@ import BgBase from "../../assets/images/titleBackground.svg";
 import BackButton from "../buttons/BackButton";
 import { PLAYER_CONSTANTS } from "../../game/config/GameConstants";
 
-type Player = { id: string; team: number; name: string; color: string };
+type Player = { id: string; team: number; name: string; color: string; accessory?: string };
 
 interface ColorSelectModalProps {
   open: boolean;
@@ -48,6 +50,7 @@ const ColorSelectModal: React.FC<ColorSelectModalProps> = ({
     [player, palette]
   );
   const [picked, setPicked] = useState<string>(safePlayer.color);
+  const [pickedAcc, setPickedAcc] = useState<string>(safePlayer.accessory ?? "none");
   const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
@@ -153,7 +156,7 @@ const ColorSelectModal: React.FC<ColorSelectModalProps> = ({
   const handleConfirm = () => {
     const l = picked.toLowerCase();
     const finalColor = (blockedSet.has(l) && l !== selfColorLower) ? firstAvailable : picked;
-    onConfirm({ ...safePlayer, color: finalColor });
+    onConfirm({ ...safePlayer, color: finalColor, accessory: pickedAcc });
     
     // 사라질 때 트랜지션 적용
     setIsAnimating(false);
@@ -191,6 +194,8 @@ const ColorSelectModal: React.FC<ColorSelectModalProps> = ({
                 key={c}
                 $color={c}
                 $active={picked === c}
+                $blocked={isBlocked}
+                disabled={isBlocked}
                 onClick={() => {if (!isBlocked) setPicked(c) }}
               aria-label={`색상 ${c}`}
               />
@@ -198,6 +203,29 @@ const ColorSelectModal: React.FC<ColorSelectModalProps> = ({
           })}
         </Palette>
 
+        <AccRow role="radiogroup" aria-label="장신구">
+          {ACCESSORIES.map((a) => (
+            <AccChip
+              key={a.id}
+              type="button"
+              role="radio"
+              aria-checked={pickedAcc === a.id}
+              $active={pickedAcc === a.id}
+              onClick={() => setPickedAcc(a.id)}
+            >
+              <AccessoryIcon id={a.id} style={{ width: 44, height: 30 }} />
+              <span>{a.name}</span>
+            </AccChip>
+          ))}
+        </AccRow>
+
+        <FaceWrap>
+        {pickedAcc !== "none" && (
+          <AccessoryIcon
+            id={pickedAcc}
+            style={{ position: "absolute", left: "50%", bottom: 0, width: "130%", transform: "translate(-50%, 0)", overflow: "visible" }}
+          />
+        )}
         <Face ref={faceRef} $color={picked}>
           {/* 눈: 하이라이트가 '같은 방향'으로 이동 */}
           <EyeWrap ref={leftEyeRef} $side="left">
@@ -212,6 +240,7 @@ const ColorSelectModal: React.FC<ColorSelectModalProps> = ({
             </Pupil>
           </EyeWrap>
         </Face>
+        </FaceWrap>
       </PreviewWrap>
     </Overlay>
   );
@@ -280,15 +309,52 @@ const Palette = styled.div`
   backdrop-filter: blur(6px);
 `;
 
-const Swatch = styled.button<{ $color: string; $active?: boolean }>`
+const Swatch = styled.button<{ $color: string; $active?: boolean; $blocked?: boolean }>`
   width: clamp(48px, 4vw, 80px);
   height: clamp(48px, 4vw, 80px);
   border-radius: 50%;
   border: none;
   background: ${({ $color }) => $color};
+  cursor: ${({ $blocked }) => ($blocked ? "not-allowed" : "pointer")};
+  opacity: ${({ $blocked }) => ($blocked ? 0.25 : 1)};
+  box-shadow: ${({ $active }) => ($active ? "0 0 0 4px #090731, 0 0 0 7px #fff" : "none")};
+  transition: transform .12s ease, box-shadow .12s ease;
+  &:hover:not(:disabled) { transform: translateY(-2px); }
+`;
+
+const AccRow = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+`;
+
+const AccChip = styled.button<{ $active?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 76px;
+  padding: 8px 10px 6px;
+  border-radius: 12px;
+  border: none;
   cursor: pointer;
-  transition: transform .12s ease;
-  &:hover { transform: translateY(-2px); }
+  color: #e9ecf3;
+  font-size: 14px;
+  background: ${({ $active }) => ($active ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.06)")};
+  box-shadow: ${({ $active }) => ($active ? "0 0 0 2px #fff" : "0 0 0 1px rgba(255,255,255,0.2)")};
+  transition: background .12s ease;
+  &:hover { background: rgba(255,255,255,0.16); }
+`;
+
+// 장신구가 머리 위로 올라갈 공간(지름의 ~34%)을 확보하고, 선택 UI 를 가리지 않게 크기 조정
+const FACE_W = "clamp(480px, 34vw, 720px)";
+const FaceWrap = styled.div`
+  position: relative;
+  top: 40px;
+  width: ${FACE_W};
+  margin-top: calc(${FACE_W} * 0.36);
 `;
 
 const PreviewWrap = styled.div`
@@ -298,13 +364,12 @@ const PreviewWrap = styled.div`
 `;
 
 const Face = styled.div<{ $color: string }>`
-  width: clamp(820px, 58vw, 1200px);
+  width: 100%;
   aspect-ratio: 1 / 0.5;
   border-top-left-radius: 1200px;
   border-top-right-radius: 1200px;
   background: ${({ $color }) => $color};
   position: relative;
-  top: 100px;
   overflow: hidden;
 
   &::before {

@@ -15,6 +15,7 @@ type Player = {
   team?: Team;
   color?: string;
   ready: boolean;
+  accessory?: string; // 장신구 id (accessories.json)
   health?: number; // 체력 추가
   wins?: number; // 🆕 라운드 승리 스택
   // 🆕 활성 증강: augmentId -> { id, startedAt }
@@ -89,6 +90,13 @@ const AUGMENT_DEFS = new Map<string, AugmentDef>(
     fs.readFileSync(path.join(__dirname, "../../kracker/src/data/augments.json"), "utf8")
   ) as AugmentDef[]).map((a) => [a.id, a])
 );
+// 장신구 목록: 클라이언트와 같은 파일 공유
+const ACCESSORY_IDS = new Set<string>(
+  (JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../../kracker/src/data/accessories.json"), "utf8")
+  ) as Array<{ id: string }>).map((a) => a.id)
+);
+
 const augEffects = (p: Player) =>
   Object.keys(p.augments || {}).map((id) => AUGMENT_DEFS.get(id)?.effects || {});
 
@@ -144,6 +152,7 @@ const toSafeRoom = (room: Room) => ({
     color: p.color,
     team: p.team,
     ready: p.ready,
+    accessory: p.accessory ?? "none",
   })),
 });
 
@@ -210,6 +219,7 @@ function safeRoomState(room: Room) {
     team: p.team,
     color: p.color,
     ready: p.ready,
+    accessory: p.accessory ?? "none",
     health: p.health || 100, // 체력 정보 포함
   }));
   return {
@@ -504,6 +514,20 @@ io.on("connection", (socket) => {
     const nick = str(payload?.nickname, 20);
     if (!room || !p || !nick) return ack?.({ ok: false });
     p.nickname = nick;
+    io.to(room.roomId).emit("room:update", safeRoomState(room));
+    ack?.({ ok: true });
+  });
+
+  // 장신구 변경 (대기 중에만)
+  socket.on("player:setAccessory", (payload: { accessory?: string }, ack?: Function) => {
+    const rid = currentRoomIdOf(socket);
+    const room = rid ? rooms.get(rid) : undefined;
+    const p = room?.players[socket.id];
+    const id = payload?.accessory;
+    if (!room || !p || room.status !== "waiting") return ack?.({ ok: false });
+    if (typeof id !== "string" || !ACCESSORY_IDS.has(id))
+      return ack?.({ ok: false, error: "BAD_ACCESSORY" });
+    p.accessory = id;
     io.to(room.roomId).emit("room:update", safeRoomState(room));
     ack?.({ ok: true });
   });

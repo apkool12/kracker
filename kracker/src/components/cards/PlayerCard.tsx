@@ -1,3 +1,4 @@
+import AccessoryIcon from "../icons/AccessoryIcon";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import CaretIcon from "../../assets/images/mdi_triangle.svg?react";
@@ -11,6 +12,7 @@ type PlayerCardProps = {
   className?: string;
   onCardClick?: () => void;
   playerColor?: string;
+  playerAccessory?: string;
   editable?: boolean;
 };
 
@@ -20,7 +22,7 @@ const RADIUS = 30;
 const BORDER = 5;
 
 const PlayerCard: React.FC<PlayerCardProps> = ({
-  team, numTeams, onTeamChange, name, className, onCardClick, playerColor, editable = true,
+  team, numTeams, onTeamChange, name, className, onCardClick, playerColor, playerAccessory, editable = true,
 }) => {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number>(Math.max(0, team - 1));
@@ -140,6 +142,9 @@ const clickable = !!onCardClick && editable;
             <MiniHighlight />
           </MiniEyeWrap>
         </MiniFace>
+        {playerAccessory && playerAccessory !== "none" && (
+          <AccessoryIcon id={playerAccessory} style={ACC_STYLE} />
+        )}
       </AvatarWrap>
 
       <NameBar><Name>{name}</Name></NameBar>
@@ -285,6 +290,16 @@ const Name = styled.div`
 `;
 
 /* ==== Avatar (모달 캐릭터 축소판) ==== */
+// 장신구 SVG: 폭 52 중 몸통 지름 40 → MiniFace(80%) × 52/40, 아래 변을 얼굴 바닥(몸 중심선)에 맞춤
+const ACC_STYLE: React.CSSProperties = {
+  position: "absolute",
+  left: "50%",
+  bottom: 0,
+  width: "104%",
+  transform: "translateX(-50%)",
+  overflow: "visible",
+};
+
 const AvatarWrap = styled.div`
   position: absolute;
   left: 50%;

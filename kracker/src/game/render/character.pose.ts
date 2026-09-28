@@ -1,4 +1,5 @@
 // src/game/render/character.pose.ts
+import { drawAccessory } from "./accessory";
 import { squashStretch } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { renderBodyWithGradient, createGradientColors } from "./character.core";
@@ -221,6 +222,7 @@ export function updatePose(
     velocityY?: number; // 있으면 착지 찌그러짐/공중 늘어남 적용
     aimX?: number; // 눈동자가 바라볼 월드 좌표
     aimY?: number;
+    accessory?: string; // 장신구 id
     isGrounded?: boolean;
     facing?: "left" | "right";
   }
@@ -260,6 +262,13 @@ export function updatePose(
   const scaleY = scaleOverride?.y ?? (1 - crouchHeight * 0.04) * ss.sy;
   const scaleX = scaleOverride?.x ?? (1 + crouchHeight * 0.005) * ss.sx;
   body.setScale(scaleX, scaleY);
+
+  // 장신구: 몸통과 같은 위치/스케일, 바라보는 방향으로 반전
+  if (refs.accessory) {
+    drawAccessory(refs.accessory, params.accessory);
+    refs.accessory.setPosition(finalX, finalY);
+    refs.accessory.setScale((facing === "left" ? -1 : 1) * scaleX, scaleY);
+  }
 
   // 그라데이션으로 몸통 렌더링
   const radius = 20;

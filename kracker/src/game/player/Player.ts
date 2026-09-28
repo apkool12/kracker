@@ -223,6 +223,9 @@ export default class Player {
 
   // ========== 내부 유틸 ==========
 
+  // 장신구 id (로비에서 선택)
+  public accessory = "none";
+
   // 넉백 등 외부 충격 (px/s)
   public applyImpulse(vx: number, vy: number): void {
     this.velocityX += vx;
@@ -694,6 +697,7 @@ export default class Player {
       facing: this.facingDirection,
       aimX: this.mouseX,
       aimY: this.mouseY,
+      accessory: this.accessory,
     });
 
     drawLimbs(this.gfx, {
@@ -1071,6 +1075,7 @@ export default class Player {
     try {
       this.gfx.body?.setVisible?.(visible);
       this.gfx.face?.setVisible?.(visible);
+      this.gfx.accessory?.setVisible?.(visible);
       this.gfx.leftArm?.setVisible?.(visible);
       this.gfx.rightArm?.setVisible?.(visible);
       this.gfx.leftLeg?.setVisible?.(visible);

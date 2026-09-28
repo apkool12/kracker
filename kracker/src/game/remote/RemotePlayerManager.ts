@@ -14,6 +14,7 @@ export interface RemotePlayer {
   name: string;
   team: number;
   color: string;
+  accessory?: string;
   gfxRefs: GfxRefs; // ☆ 핵심: 그래픽 참조 저장
   lastPosition: { x: number; y: number };
   lastUpdate: number;
@@ -332,6 +333,7 @@ export class RemotePlayerManager {
       name: playerData.name,
       team: playerData.team,
       color: playerData.color,
+      accessory: playerData.accessory ?? "none",
       gfxRefs: gfxRefs, // ☆ 그래픽 참조 저장
       lastPosition: { x: spawnPoint.x, y: spawnPoint.y },
       lastUpdate: Date.now(),
@@ -376,6 +378,7 @@ export class RemotePlayerManager {
     }
     if (gfxRefs.face) {
       gfxRefs.face.setVisible(true);
+      gfxRefs.accessory?.setVisible(true);
       gfxRefs.face.setDepth(-3); // 로컬과 동일
     }
     if (gfxRefs.leftArm) {
@@ -529,6 +532,7 @@ export class RemotePlayerManager {
         facing,
         aimX: (remotePlayer as any).pose?.mouseX,
         aimY: (remotePlayer as any).pose?.mouseY,
+        accessory: remotePlayer.accessory,
       });
 
       // 2. 로컬과 동일한 팔다리 렌더링 시스템 사용

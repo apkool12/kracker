@@ -1,0 +1,9 @@
+[
+  { "id": "none", "name": "없음" },
+  { "id": "cap", "name": "야구모자" },
+  { "id": "crown", "name": "왕관" },
+  { "id": "horns", "name": "뿔" },
+  { "id": "sprout", "name": "새싹" },
+  { "id": "bow", "name": "리본" },
+  { "id": "headband", "name": "머리띠" }
+]
