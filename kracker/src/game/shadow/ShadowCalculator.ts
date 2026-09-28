@@ -185,8 +185,9 @@ export class ShadowCalculator {
 
 
   /**
-   * 점광원 그림자: 기존 사다리꼴(윗변에서 시작해 양옆으로 폭의 0.6배씩 벌어짐)을
-   * 광원 → 플랫폼 방향으로 회전시킨 것. 광원이 바로 위면 기존 90° 사다리꼴과 동일.
+   * 점광원 그림자: 기존 사다리꼴을 광원 방향으로 드리운 것.
+   * 광원에서 본 플랫폼의 양 끝 모서리(실루엣)에서 시작해, 광원→모서리 방향으로 뻗으며
+   * 기존처럼 바깥쪽으로 폭의 0.6배씩 더 벌어진다. 광원이 바로 위면 기존 90° 사다리꼴과 같다.
    */
   private calculatePointLightShadow(
     platform: Platform,
@@ -197,33 +198,43 @@ export class ShadowCalculator {
     const cx = x + w / 2;
     const cy = y + h / 2;
     const dl = Math.hypot(cx - light.x, cy - light.y) || 1;
-    const dx = (cx - light.x) / dl; // 그림자 진행 방향
+    const dx = (cx - light.x) / dl;
     const dy = (cy - light.y) / dl;
-    const nx = -dy; // 진행 방향의 수직
-    const ny = dx;
 
-    // 진행 방향에서 본 플랫폼의 반폭/반두께
-    const hw = Math.abs(nx) * (w / 2) + Math.abs(ny) * (h / 2);
-    const hd = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
-    // 광원 쪽 면(위에서 비출 때의 윗변)에서 시작
-    const bx = cx - dx * hd;
-    const by = cy - dy * hd;
-    const len = this.lightConfig.maxLength || 1500;
-    // 기존: 아래쪽 반폭 = 반폭 + 폭*0.6 → 반폭 * 2.2 (최대 확산 폭*3.5 이내)
-    const farHalf = Math.min(hw * 2.2, hw * 3.5);
-    const fx = bx + dx * len;
-    const fy = by + dy * len;
-
-    return [
-      {
-        points: [
-          bx - nx * hw, by - ny * hw,
-          bx + nx * hw, by + ny * hw,
-          fx + nx * farHalf, fy + ny * farHalf,
-          fx - nx * farHalf, fy - ny * farHalf,
-        ],
-      },
+    // 광원에서 본 각도가 가장 작은/큰 모서리 = 실루엣 모서리
+    const corners = [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + h },
+      { x, y: y + h },
     ];
+    const angleOf = (c: { x: number; y: number }) => {
+      const vx = c.x - light.x;
+      const vy = c.y - light.y;
+      return Math.atan2(dx * vy - dy * vx, dx * vx + dy * vy);
+    };
+    let a = corners[0]!;
+    let b = corners[0]!;
+    for (const c of corners) {
+      if (angleOf(c) < angleOf(a)) a = c;
+      if (angleOf(c) > angleOf(b)) b = c;
+    }
+
+    const len = this.lightConfig.maxLength || 1500;
+    const spread = Math.hypot(b.x - a.x, b.y - a.y) * 0.6; // 기존: 양옆 폭*0.6
+    const ray = (c: { x: number; y: number }, side: number) => {
+      const vx = c.x - light.x;
+      const vy = c.y - light.y;
+      const d = Math.hypot(vx, vy) || 1;
+      const ux = vx / d;
+      const uy = vy / d;
+      // 광선 방향으로 len, 그리고 바깥쪽(그림자 중심축에서 멀어지는 쪽)으로 spread
+      return { x: c.x + ux * len + -uy * side * spread, y: c.y + uy * len + ux * side * spread };
+    };
+    const fa = ray(a, -1);
+    const fb = ray(b, 1);
+
+    return [{ points: [a.x, a.y, b.x, b.y, fb.x, fb.y, fa.x, fa.y] }];
   }
 
   private getLightDirection(): { x: number; y: number } {
