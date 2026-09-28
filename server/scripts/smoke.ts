@@ -54,6 +54,12 @@ async function main() {
   assert.equal(info.room.players.find((p: any) => p.id === b.id).team, "A");
   await call(b, "player:setTeam", { team: "B" });
 
+  // 장신구: 목록에 있는 것만 허용, 방 상태에 반영
+  assert.equal((await call(a, "player:setAccessory", { accessory: "hacked" })).ok, false);
+  assert((await call(a, "player:setAccessory", { accessory: "crown" })).ok, "setAccessory failed");
+  const accInfo = await call(b, "room:info", { roomId });
+  assert.equal(accInfo.room.players.find((p: any) => p.id === a.id).accessory, "crown");
+
   assert((await call(a, "game:start", {})).ok, "start failed");
 
   // 방 밖의 소켓은 데미지를 줄 수 없다

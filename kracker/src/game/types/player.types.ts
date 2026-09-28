@@ -52,6 +52,7 @@ export interface GfxRefs {
   leftLeg: any; // Phaser.GameObjects.Graphics
   rightLeg: any; // Phaser.GameObjects.Graphics
   gun: any; // Phaser.GameObjects.Graphics
+  accessory?: any; // 장신구 Graphics (몸통과 같이 이동/스케일)
 }
 
 // 벽잡기 상태 블록(모듈 간 전달용, 필요 시 확장)

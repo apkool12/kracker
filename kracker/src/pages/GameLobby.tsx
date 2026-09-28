@@ -15,7 +15,7 @@ import { socket } from "./../lib/socket";
 
 const toCssHex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
 
-type Player = { id: string; team: number; name: string; color: string };
+type Player = { id: string; team: number; name: string; color: string; accessory?: string };
 
 interface GameLobbyProps {
   roomCode?: string;
@@ -85,6 +85,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
   const handleColorConfirm = (next: Player) => {
     if (!room?.roomId) return;
 
+    // 장신구가 바뀌었으면 서버에 반영 (색과 독립)
+    const prevAcc = players.find((p) => p.id === next.id)?.accessory ?? "none";
+    if ((next.accessory ?? "none") !== prevAcc) {
+      setPlayers((prev) =>
+        prev.map((p) => (p.id === next.id ? { ...p, accessory: next.accessory } : p))
+      );
+      socket.emit("player:setAccessory", { accessory: next.accessory ?? "none" }, (res: any) => {
+        if (!res?.ok) fetchRoomInfo();
+      });
+    }
+
     const hex = normalizeHex(next.color);
     setPlayers((prev) =>
       prev.map((p) => (p.id === next.id ? { ...p, color: hex } : p))
@@ -125,6 +136,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
         typeof p.color === "string" && p.color.length > 0
           ? p.color
           : DEFAULT_SKIN,
+      accessory: typeof p.accessory === "string" ? p.accessory : "none",
     };
   }, []);
 
@@ -302,6 +314,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
             name: p.name,
             team: p.team,
             color: p.color,
+            accessory: p.accessory,
             isMe: p.id === myId,
           })),
           room: {
@@ -534,6 +547,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
                   <PlayerCard
                     key={p.id}
                     name={p.name}
+                    playerAccessory={p.accessory}
                     team={p.team}
                     numTeams={NUM_TEAMS}
                     editable={p.id === myId}
@@ -555,6 +569,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
                   <PlayerCard
                     key={p.id}
                     name={p.name}
+                    playerAccessory={p.accessory}
                     team={p.team}
                     numTeams={NUM_TEAMS}
                     editable={p.id === myId}
@@ -576,6 +591,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
                   <PlayerCard
                     key={p.id}
                     name={p.name}
+                    playerAccessory={p.accessory}
                     team={p.team}
                     numTeams={NUM_TEAMS}
                     editable={p.id === myId}
@@ -597,6 +613,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
                   <PlayerCard
                     key={p.id}
                     name={p.name}
+                    playerAccessory={p.accessory}
                     team={p.team}
                     numTeams={NUM_TEAMS}
                     editable={p.id === myId}

@@ -54,10 +54,12 @@ export function createCharacter(
   // 몸통을 Graphics로 변경하여 그라데이션 적용
   const body = scene.add.graphics();
   const face = scene.add.graphics();
+  const accessory = scene.add.graphics();
 
   // Depth (원본과 동일)
   body.setDepth(-3);
   face.setDepth(-3);
+  accessory.setDepth(-2);
   leftArm.setDepth(-5);
   rightArm.setDepth(-5);
   leftLeg.setDepth(-5);
@@ -72,6 +74,7 @@ export function createCharacter(
     leftLeg,
     rightLeg,
     gun,
+    accessory,
   };
 
   return refs;
@@ -160,6 +163,7 @@ export function destroyCharacter(refs: GfxRefs): void {
   tryDestroy(refs.leftLeg);
   tryDestroy(refs.rightLeg);
   tryDestroy(refs.face);
+  tryDestroy(refs.accessory);
   tryDestroy(refs.body);
 }
 

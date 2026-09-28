@@ -49,6 +49,7 @@ export interface GamePlayer {
   team: number;
   color: string;
   isMe: boolean;
+  accessory?: string;
 }
 
 interface GameData {
@@ -567,6 +568,7 @@ export default class GameScene extends Phaser.Scene {
               const refs = rp.gfxRefs;
               refs?.body?.setVisible?.(false);
               refs?.face?.setVisible?.(false);
+              refs?.accessory?.setVisible?.(false);
               refs?.leftArm?.setVisible?.(false);
               refs?.rightArm?.setVisible?.(false);
               refs?.leftLeg?.setVisible?.(false);
@@ -607,6 +609,7 @@ export default class GameScene extends Phaser.Scene {
               const refs = rp.gfxRefs;
               refs?.body?.setVisible?.(true);
               refs?.face?.setVisible?.(true);
+              refs?.accessory?.setVisible?.(true);
               refs?.leftArm?.setVisible?.(true);
               refs?.rightArm?.setVisible?.(true);
               refs?.leftLeg?.setVisible?.(true);
@@ -685,6 +688,7 @@ export default class GameScene extends Phaser.Scene {
           const vis = (v: boolean) => {
             refs.body?.setVisible?.(v);
             refs.face?.setVisible?.(v);
+            refs.accessory?.setVisible?.(v);
             refs.leftArm?.setVisible?.(v);
             refs.rightArm?.setVisible?.(v);
             refs.leftLeg?.setVisible?.(v);
@@ -860,6 +864,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 색상 설정
     this.setMyPlayerColor(playerData.color);
+    this.player.accessory = playerData.accessory ?? "none";
 
     //내 플레이어 세팅 시 태그 만들기
     this.uiManager.createNameTag(playerData.id, playerData.name);

@@ -211,10 +211,8 @@ const GameCanvas = styled.div`
   position: relative;
 
   /* Phaser canvas 스타일링 */
+  /* 크기/가운데 정렬은 Phaser Scale.FIT 이 비율을 유지하며 처리 (강제로 100% 늘리면 찌그러짐) */
   & > canvas {
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0;
     padding: 0;
     display: block;
     background: black;
