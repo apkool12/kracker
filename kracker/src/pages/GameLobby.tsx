@@ -1,5 +1,5 @@
 // src/pages/GameLobby.tsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
@@ -200,18 +200,10 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden" && room?.roomId) {
-        socket.emit("room:leave", {});
-      }
-    };
-
     window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [room?.roomId]);
 
@@ -263,6 +255,10 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
     }
   }, [room]);
 
+  // 소켓 핸들러에서 최신 players 를 읽기 위한 ref (effect 의존성에 넣으면 room:info 무한 루프)
+  const playersRef = useRef(players);
+  playersRef.current = players;
+
   // ★ 이벤트 수신 시 '내가 나간 상태'를 즉시 반영
   useEffect(() => {
     if (!room?.roomId) return;
@@ -301,7 +297,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
         }
 
         const gameState = {
-          players: players.map((p) => ({
+          players: playersRef.current.map((p) => ({
             id: p.id,
             name: p.name,
             team: p.team,
@@ -351,8 +347,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
   }, [
     room?.roomId,
     myId,
-    players, // ⭐ players 의존성 추가
-    navigate, // ⭐ navigate 의존성 추가
+    navigate,
   ]);
 
   const handleTeamChange = (id: string, nextTeam: number) => {
@@ -449,6 +444,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
           NOT_HOST: "방장만 게임을 시작할 수 있습니다.",
           COLOR_NOT_READY: "모든 플레이어가 색상을 선택해야 합니다.",
           NO_ROOM: "방을 찾을 수 없습니다.",
+          NOT_ENOUGH_PLAYERS: "2명 이상이어야 시작할 수 있습니다.",
+          IN_PROGRESS: "이미 게임이 진행 중입니다.",
         };
 
         const errorMsg =
@@ -459,34 +456,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomCode = "", onExit }) => {
       }
     });
 
-    // 🧪 임시 테스트: 5초 후 강제로 게임 시작 (서버 이벤트가 안 올 경우 대비)
-    setTimeout(() => {
-      try {
-        const gameState = {
-          players: players.map((p) => ({
-            id: p.id,
-            name: p.name,
-            team: p.team,
-            color: p.color,
-            isMe: p.id === myId,
-          })),
-          room: {
-            roomId: room?.roomId,
-            gameMode: room?.gameMode || "일반",
-            roomName: room?.roomName,
-          },
-          myPlayerId: myId,
-          startTime: Date.now(),
-        };
-
-        sessionStorage.setItem("gameState", JSON.stringify(gameState));
-
-        setExiting(true);
-        setTimeout(() => navigate("/game", { state: gameState, replace: true }), 260);
-      } catch (error) {
-        setLoadingModalOpen(false); // 오류 시 모달 닫기
-      }
-    }, 5000);
   };
 
   const isDisabled = overCapacity || !allColored;

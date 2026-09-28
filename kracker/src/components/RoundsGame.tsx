@@ -448,6 +448,7 @@ const RoundsGame: React.FC = () => {
         
         // 씬 로딩 완료를 기다리는 함수
         const waitForScene = (retryCount = 0) => {
+          if (!gameManagerRef.current) return; // 언마운트/정리됨
           const retryScene = gameManagerRef.current?.getScene();
           const retryIsReady = gameManagerRef.current?.isSceneReady();
           
@@ -547,11 +548,13 @@ const RoundsGame: React.FC = () => {
   }, [gameState, initializeGame]);
 
   // 컴포넌트 언마운트 시에만 정리
+  // 게임 화면을 떠나면(ESC, 최종 결과 후 홈 등) 서버 방에서도 나간다
   useEffect(() => {
     return () => {
       if (gameManagerRef.current) {
         cleanupGame();
       }
+      socket.emit("room:leave", {});
     };
   }, [cleanupGame]);
 
