@@ -33,6 +33,8 @@ export default class GameManager {
     await Debug.measureAsync("맵 초기화", async () => {
       await initializeMaps();
     });
+    // 맵 로딩 중에 destroy() 됐다면 게임을 만들지 않는다 (언마운트 후 누수 방지)
+    if (this.destroyed) return;
 
     // Phaser 게임 설정
     const config: Phaser.Types.Core.GameConfig = {
@@ -334,7 +336,9 @@ export default class GameManager {
   }
 
   // 정리
+  private destroyed = false;
   destroy(): void {
+    this.destroyed = true;
     Debug.log.info(LogCategory.GAME, "게임 매니저 종료 시작");
 
     // 리사이즈 옵저버 정리

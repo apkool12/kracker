@@ -126,9 +126,16 @@ export class NetworkManager {
   }
 
   // 소켓 이벤트 리스너 설정
+  // 이 매니저가 등록한 소켓 리스너 (destroy 시 정확히 이것만 해제)
+  private listeners: Array<[string, (...args: any[]) => void]> = [];
+  private listen(ev: string, fn: (...args: any[]) => void): void {
+    socket.on(ev, fn);
+    this.listeners.push([ev, fn]);
+  }
+
   private setupSocketListeners(): void {
     // 연결 상태 관리
-    socket.on("connect", () => {
+    this.listen("connect", () => {
       console.log("🔗 소켓 연결됨");
       this.isConnected = true;
 
@@ -138,13 +145,13 @@ export class NetworkManager {
       }
     });
 
-    socket.on("disconnect", () => {
+    this.listen("disconnect", () => {
       console.log("🔌 소켓 연결 끊김");
       this.isConnected = false;
     });
 
     // 플레이어 움직임 수신
-    socket.on("state:move", (data: any) => {
+    this.listen("state:move", (data: any) => {
       if (data.id !== this.myPlayerId && this.onPlayerMoveCallback) {
         // facing 값을 안전하게 변환
         const facing: "left" | "right" = data.facing === "L" ? "left" : "right";
@@ -166,7 +173,7 @@ export class NetworkManager {
     });
 
     // 플레이어 사격 수신
-    socket.on("state:shoot", (data: any) => {
+    this.listen("state:shoot", (data: any) => {
       if (data.id !== this.myPlayerId && this.onPlayerShootCallback) {
         const shootData: ShootData = {
           x: data.x,
@@ -180,14 +187,14 @@ export class NetworkManager {
     });
 
     // 총알 충돌 수신
-    socket.on("game:bulletHit", (data: BulletHit) => {
+    this.listen("game:bulletHit", (data: BulletHit) => {
       if (this.onBulletHitCallback) {
         this.onBulletHitCallback(data);
       }
     });
 
     // 포즈(관절/조준각) 수신
-    socket.on("pose:update", (pose: any) => {
+    this.listen("pose:update", (pose: any) => {
       // 보낸 당사자라면 스킵
       const pid = pose?.id;
       if (!pid || pid === this.myPlayerId) return;
@@ -195,38 +202,38 @@ export class NetworkManager {
     });
 
     // 파티클 수신
-    socket.on("particle:create", (particleData: any) => {
+    this.listen("particle:create", (particleData: any) => {
       this.onParticleCallback?.(particleData);
     });
 
     // 게임 이벤트 수신
-    socket.on("game:event", (event: GameEvent) => {
+    this.listen("game:event", (event: GameEvent) => {
       if (this.onGameEventCallback) {
         this.onGameEventCallback(event);
       }
     });
 
     // 체력 업데이트 수신
-    socket.on("game:healthUpdate", (data: any) => {
+    this.listen("game:healthUpdate", (data: any) => {
       console.log(`💚 NetworkManager: 체력 업데이트 수신:`, data);
       if (this.onHealthUpdateCallback) {
         this.onHealthUpdateCallback(data);
       }
     });
     // 🆕 증강 스냅샷 수신
-    socket.on("augment:snapshot", (data: any) => {
+    this.listen("augment:snapshot", (data: any) => {
       console.log("📦 증강 스냅샷 수신:", data);
       this.onAugmentSnapshotCallback?.(data);
     });
 
     // 플레이어 입장/퇴장
-    socket.on("game:playerJoined", (playerData: any) => {
+    this.listen("game:playerJoined", (playerData: any) => {
       if (playerData.id !== this.myPlayerId && this.onPlayerJoinCallback) {
         this.onPlayerJoinCallback(playerData);
       }
     });
 
-    socket.on("game:playerLeft", (data: { playerId: string }) => {
+    this.listen("game:playerLeft", (data: { playerId: string }) => {
       if (data.playerId !== this.myPlayerId && this.onPlayerLeaveCallback) {
         this.onPlayerLeaveCallback(data.playerId);
       }
@@ -475,15 +482,9 @@ export class NetworkManager {
     // 게임 룸 나가기
     this.leaveGameRoom();
 
-    // 소켓 리스너 제거
-    socket.off("connect");
-    socket.off("disconnect");
-    socket.off("game:playerMove");
-    socket.off("state:shoot");
-    socket.off("game:bulletHit");
-    socket.off("game:event");
-    socket.off("game:playerJoined");
-    socket.off("game:playerLeft");
+    // 소켓 리스너 제거 (다른 컴포넌트의 리스너는 건드리지 않음)
+    this.listeners.forEach(([ev, fn]) => socket.off(ev, fn));
+    this.listeners = [];
 
     // 상태 초기화
     this.isConnected = false;

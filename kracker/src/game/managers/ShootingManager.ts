@@ -158,7 +158,7 @@ export class ShootingManager {
     // Shift 키로 블링크
     const shiftKey = this.scene.input.keyboard?.addKey("SHIFT");
     shiftKey?.on("down", () => {
-      if (this.player) {
+      if (this.player && !this.player.inputLocked) {
         // 마우스 현재 위치로 텔레포트
         const pointer = this.scene.input.activePointer;
         (this.player as any).performBlinkToMousePosition?.(
@@ -194,6 +194,8 @@ export class ShootingManager {
       Debug.log.warn(LogCategory.GAME, "플레이어가 설정되지 않아 사격 불가");
       return false;
     }
+    // 사망/스턴 중에는 사격 불가
+    if (this.player.inputLocked || this.player.getHealth() <= 0) return false;
 
     // 총의 실제 위치 계산 (Player.getGunPosition()과 동일하게)
     const gunPos = this.player.getGunPosition();
@@ -331,14 +333,7 @@ export class ShootingManager {
         }
       });
 
-      // 반동 효과
-      this.handleRecoil(this.config.recoil);
-
-      // 카메라 흔들림 효과
-      this.scene.cameras.main.shake(5000, 0.005);
-
-      // 사격 콜백 호출 (네트워크 전송용)
-      this.onShotCallback?.(this.config.recoil);
+      // 반동/네트워크 전송은 ShootingSystem 의 onShot 콜백(initialize)에서 한 번만 처리
     } else {
       this.logShootFailureReason();
     }

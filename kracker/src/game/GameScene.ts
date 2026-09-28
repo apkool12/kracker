@@ -234,6 +234,11 @@ export default class GameScene extends Phaser.Scene {
 
     this.sceneState = GAME_STATE.SCENE_STATES.LOADING;
 
+    // Phaser 는 shutdown() 메서드를 자동 호출하지 않는다 → 씬 이벤트에 연결
+    this.hasShutDown = false;
+    this.events.once("shutdown", this.shutdown, this);
+    this.events.once("destroy", this.shutdown, this);
+
     try {
       // GameManager에 자신을 등록 (씬이 완전히 초기화된 후)
       const gameManager = this.game.registry.get("gameManager");
@@ -1049,10 +1054,10 @@ export default class GameScene extends Phaser.Scene {
             if (pid === this.myPlayerId && this.player) {
               // 로컬 플레이어: 입력 비활성화로 스턴 구현
               const ms = data.ms ?? 500;
-              const prev = (this.inputManager as any)?.isEnabled ?? true;
               this.setInputEnabled(false);
               setTimeout(() => {
-                this.setInputEnabled(prev);
+                // 스턴 중 사망했다면 부활(alive) 이벤트가 입력을 다시 연다
+                if ((this.player?.getHealth() ?? 0) > 0) this.setInputEnabled(true);
               }, ms);
             }
           } else if (data.status === "knockback") {
@@ -1139,6 +1144,9 @@ export default class GameScene extends Phaser.Scene {
             if (chosen) {
               this.setPlayerPosition(chosen.x, chosen.y);
             }
+            // 새 라운드: 이전 라운드의 속도/슬로우가 이어지지 않도록 초기화
+            this.player.resetVelocity();
+            (this.player as any).__speedMul = 1.0;
             
             // 이름표 복구
             if (myData) this.tryCreateNameTag(myData.id, myData.name);
@@ -2227,22 +2235,6 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // 재장전시 네트워크로 전송
-    this.shootingManager.onReload(() => {
-      if (this.isMultiplayer && this.player) {
-        const gunPos = this.player.getGunPosition();
-        const shootData = {
-          x: gunPos.x,
-          y: gunPos.y,
-          angle: gunPos.angle,
-          gunX: gunPos.x,
-          gunY: gunPos.y,
-        };
-
-        this.networkManager.sendShoot(shootData);
-      }
-    });
-
     // ☆ 명중시 네트워크로 충돌 데이터 전송 (CollisionSystem에서 처리하므로 비활성화)
     // this.shootingManager.onHit((x, y) => {
     //   // 충돌 지점에서 플레이어 검색
@@ -3006,7 +2998,8 @@ export default class GameScene extends Phaser.Scene {
 
   // 입력 제어
   public setInputEnabled(enabled: boolean): void {
-    this.inputManager.setEnabled(enabled);
+    this.inputManager?.setEnabled(enabled);
+    if (this.player) this.player.inputLocked = !enabled;
   }
 
   // 화면 크기 변경 처리
@@ -3123,12 +3116,17 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Phaser Scene 생명주기 - shutdown
+  private hasShutDown = false;
   shutdown(): void {
+    // SHUTDOWN/DESTROY 둘 다 올 수 있으므로 한 번만
+    if (this.hasShutDown) return;
+    this.hasShutDown = true;
+
     // 상태 변경
     this.sceneState = GAME_STATE.SCENE_STATES.LOADING;
 
     //모든 이름표 정리
-    this.uiManager.destroyAllNameTags();
+    this.uiManager?.destroyAllNameTags();
 
     // ☆ 네트워크 매니저 정리
     try {

@@ -225,8 +225,11 @@ export default class Player {
 
   // ========== 내부 유틸 ==========
 
+  // 사망/스턴/라운드 전환 중 입력 차단 (GameScene.setInputEnabled 가 제어)
+  public inputLocked = false;
+
   private readInputs(): KeyState {
-    const k = getKeyState(this.keysHandle);
+    const k = getKeyState(this.inputLocked ? null : this.keysHandle);
     // 포인터 좌표
     const pos = this.pointerHandle?.getPointer() ?? {
       x: this.mouseX,
