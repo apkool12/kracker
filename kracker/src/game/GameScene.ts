@@ -8,12 +8,6 @@ import { ParticleSystem } from "./particle";
 import { NetworkManager } from "./managers/NetworkManager"; // ☆ 네트워크 매니저 추가
 // import { DebugRenderer } from "./debug/DebugRenderer"; // ☆ 디버그 렌더러 제거
 
-// ☆ 캐릭터 렌더링 관련 import 추가
-import { createCharacter, destroyCharacter } from "./render/character.core";
-import { CharacterColors, GfxRefs } from "./types/player.types";
-import { drawLimbs } from "./render/limbs";
-import { updatePose, drawHealthBar } from "./render/character.pose";
-
 // 상수 및 설정
 import {
   GAME_SETTINGS,
@@ -34,6 +28,10 @@ import { CameraManager } from "./managers/CameraManager";
 import { ShadowManager } from "./managers/ShadowManager";
 import { ShootingManager } from "./managers/ShootingManager";
 import CollisionSystem from "./systems/CollisionSystem";
+import {
+  RemotePlayerManager,
+  type RemotePlayer,
+} from "./remote/RemotePlayerManager";
 // 증강 정의(JSON)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -41,10 +39,10 @@ import AUGMENT_DEFS from "../data/augments.json";
 import {
   getAugmentsForPlayer,
 } from "../data/augments";
-import { HIT_SOUND, SHOOT_SOUND } from "../assets/audios/tracks";
+import { HIT_SOUND } from "../assets/audios/tracks";
 
 // 멀티플레이어 타입 정의
-interface GamePlayer {
+export interface GamePlayer {
   id: string;
   name: string;
   team: number;
@@ -67,73 +65,9 @@ interface GameData {
   spawnPositions?: Record<string, { x: number; y: number }>;
 }
 
-// ☆ 원격 플레이어 타입 수정 (그래픽 참조 포함)
-interface RemotePlayer {
-  id: string;
-  name: string;
-  team: number;
-  color: string;
-  gfxRefs: GfxRefs; // ☆ 핵심: 그래픽 참조 저장
-  lastPosition: { x: number; y: number };
-  lastUpdate: number;
-  isVisible: boolean;
-  interpolation: {
-    targetX: number;
-    targetY: number;
-    currentX: number;
-    currentY: number;
-    targetVX: number;
-    targetVY: number;
-  };
-  networkState: {
-    isGrounded: boolean;
-    isJumping: boolean;
-    isCrouching: boolean;
-    isWallGrabbing: boolean;
-    facing: "left" | "right";
-    health: number;
-    mouseX: number; // 마우스 X 위치 추가
-    mouseY: number; // 마우스 Y 위치 추가
-  };
-  // 파티클 상태 추적
-  particleState: {
-    hasDied: boolean; // 사망 파티클이 이미 생성되었는지
-  };
-  // 애니메이션 상태 (로컬 플레이어와 동일)
-  animationState: {
-    armSwing: number;
-    legSwing: number;
-    wobble: number;
-    shootRecoil: number;
-    lastShotTime: number;
-    isShooting: boolean;
-  };
-  // 체력바 관련 속성
-  hpBarGraphics?: any;
-}
-
 // 간단한 소리 재생 함수
-let isPlayingShootSound = false;
 let isPlayingHitSound = false;
 
-function playShootSound(volume: number = 0.3) {
-  if (!isPlayingShootSound) {
-    isPlayingShootSound = true;
-    try {
-      const audio = new Audio(SHOOT_SOUND);
-      audio.volume = volume;
-      audio.play().catch(() => {
-        isPlayingShootSound = false;
-      });
-      audio.onended = () => {
-        isPlayingShootSound = false;
-      };
-    } catch (e) {
-      console.warn("쏴용 소리 재생 실패:", e);
-      isPlayingShootSound = false;
-    }
-  }
-}
 
 function playHitSound() {
   if (!isPlayingHitSound) {
@@ -166,7 +100,10 @@ export default class GameScene extends Phaser.Scene {
   private platformGroup!: Phaser.Physics.Arcade.StaticGroup;
 
   // ☆ 멀티플레이어 관련
-  private remotePlayers: Map<string, RemotePlayer> = new Map();
+  private remotePlayerManager = new RemotePlayerManager(this);
+  // bullet.ts/DebugRenderer 가 scene.remotePlayers 로 직접 접근하므로 같은 Map 인스턴스를 유지
+  private remotePlayers: Map<string, RemotePlayer> =
+    this.remotePlayerManager.remotePlayers;
   private myPlayerId: string | null = null;
   private gameData: GameData | null = null;
   private isMultiplayer: boolean = false;
@@ -297,12 +234,12 @@ export default class GameScene extends Phaser.Scene {
   private setupNetworkCallbacks(): void {
     // 플레이어 움직임 수신
     this.networkManager.setPlayerMoveCallback((playerId, movement) => {
-      this.handleRemotePlayerMovement(playerId, movement);
+      this.remotePlayerManager.handleRemotePlayerMovement(playerId, movement);
     });
 
     // 플레이어 사격 수신
     this.networkManager.onPlayerShoot((playerId, shootData) => {
-      this.handleRemotePlayerShoot(playerId, shootData);
+      this.remotePlayerManager.handleRemotePlayerShoot(playerId, shootData);
     });
 
     // 이알 충돌 수신
@@ -312,7 +249,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 포즈(조준각 등) 수신
     this.networkManager.onPose((playerId, pose) => {
-      this.applyRemotePose(playerId, pose);
+      this.remotePlayerManager.applyRemotePose(playerId, pose);
     });
 
     // 파티클 수신
@@ -398,82 +335,6 @@ export default class GameScene extends Phaser.Scene {
     console.log("🌐 네트워크 콜백 설정 완료");
   }
 
-  // ☆ 원격 플레이어 움직임 처리
-  private handleRemotePlayerMovement(playerId: string, movement: any): void {
-    const remotePlayer = this.remotePlayers.get(playerId);
-    if (!remotePlayer) {
-      console.warn(`⚠️ 원격 플레이어 ${playerId}를 찾을 수 없습니다`);
-      return;
-    }
-
-    // 이전 상태 저장 (파티클 생성용)
-    const wasGrounded = remotePlayer.networkState.isGrounded;
-    const wasWallGrabbing = remotePlayer.networkState.isWallGrabbing;
-    const wasWallDirection = remotePlayer.networkState.isWallGrabbing
-      ? remotePlayer.networkState.facing === "left"
-        ? "left"
-        : "right"
-      : null;
-
-    // 네트워크 상태 업데이트 (체력은 healthUpdate 이벤트에서만 관리)
-    remotePlayer.networkState = {
-      isGrounded: movement.isGrounded,
-      isJumping: movement.isJumping,
-      isCrouching: movement.isCrouching,
-      isWallGrabbing: movement.isWallGrabbing,
-      facing: movement.facing,
-      health: remotePlayer.networkState.health, // 기존 체력 유지
-      mouseX:
-        movement.mouseX ||
-        remotePlayer.lastPosition.x + (movement.facing === "right" ? 50 : -50), // 마우스 위치 또는 방향 기반 추정
-      mouseY: movement.mouseY || remotePlayer.lastPosition.y,
-    };
-
-    // 보간 타겟 설정
-    remotePlayer.interpolation.targetX = movement.x;
-    remotePlayer.interpolation.targetY = movement.y;
-    remotePlayer.interpolation.targetVX = movement.vx;
-    remotePlayer.interpolation.targetVY = movement.vy;
-    remotePlayer.lastUpdate = Date.now();
-
-    // 위치 즉시 업데이트 (부드러운 보간은 update에서 처리)
-    remotePlayer.lastPosition = { x: movement.x, y: movement.y };
-
-    // 가시성은 체력 상태에 따름 (사망자는 계속 숨김)
-    remotePlayer.isVisible = (remotePlayer.networkState.health || 0) > 0;
-
-    // 파티클 생성 로직
-    this.handleRemotePlayerParticles(
-      remotePlayer,
-      wasGrounded,
-      wasWallGrabbing,
-      wasWallDirection
-    );
-  }
-
-  // 포즈 적용 메서드
-  private applyRemotePose(
-    playerId: string,
-    pose: {
-      angle?: number;
-      facing?: "left" | "right";
-      mouseX?: number;
-      mouseY?: number;
-    }
-  ) {
-    const rp = this.remotePlayers.get(playerId);
-    if (!rp) return;
-    (rp as any).pose = {
-      angle: pose.angle,
-      facing: pose.facing ?? rp.networkState.facing,
-      mouseX: pose.mouseX,
-      mouseY: pose.mouseY,
-      t: Date.now(),
-    };
-  }
-
-
-
   // 원격 파티클 생성 메서드
   private createRemoteParticle(particleData: any): void {
     if (!this.particleSystem) return;
@@ -499,150 +360,6 @@ export default class GameScene extends Phaser.Scene {
       default:
         console.warn(`알 수 없는 파티클 타입: ${type}`);
     }
-  }
-
-  // ☆ 원격 플레이어 파티클 처리
-  private handleRemotePlayerParticles(
-    remotePlayer: RemotePlayer,
-    wasGrounded: boolean,
-    wasWallGrabbing: boolean,
-    wasWallDirection: "left" | "right" | null
-  ): void {
-    const { x, y } = remotePlayer.lastPosition;
-    const playerColor = this.parsePlayerColor(remotePlayer.color);
-
-    // 점프 파티클: 지상에서 공중으로
-    if (wasGrounded && !remotePlayer.networkState.isGrounded) {
-      this.particleSystem.createJumpParticle(x, y + 25, playerColor);
-      // 네트워크로 파티클 이벤트 전송
-      if (this.isMultiplayer && this.networkManager) {
-        this.networkManager.sendParticle({
-          type: "jump",
-          x: x,
-          y: y + 25,
-          color: remotePlayer.color,
-          playerId: remotePlayer.id,
-        });
-      }
-    }
-
-    // 벽점프 파티클: 벽잡기에서 벽점프
-    if (
-      wasWallGrabbing &&
-      !remotePlayer.networkState.isWallGrabbing &&
-      wasWallDirection
-    ) {
-      if (wasWallDirection === "left") {
-        this.particleSystem.createWallLeftJumpParticle(x, y + 25, playerColor);
-        // 네트워크로 파티클 이벤트 전송
-        if (this.isMultiplayer && this.networkManager) {
-          this.networkManager.sendParticle({
-            type: "wallLeftJump",
-            x: x,
-            y: y + 25,
-            color: remotePlayer.color,
-            playerId: remotePlayer.id,
-          });
-        }
-      } else if (wasWallDirection === "right") {
-        this.particleSystem.createWallRightJumpParticle(x, y + 25, playerColor);
-        // 네트워크로 파티클 이벤트 전송
-        if (this.isMultiplayer && this.networkManager) {
-          this.networkManager.sendParticle({
-            type: "wallRightJump",
-            x: x,
-            y: y + 25,
-            color: remotePlayer.color,
-            playerId: remotePlayer.id,
-          });
-        }
-      }
-    }
-
-    // 사망 파티클: HP가 0이 되었을 때 (한 번만 생성)
-    if (
-      remotePlayer.networkState.health <= 0 &&
-      !remotePlayer.particleState.hasDied
-    ) {
-      this.particleSystem.createDeathOxidationParticle(x, y);
-      remotePlayer.particleState.hasDied = true;
-      // 네트워크로 파티클 이벤트 전송
-      if (this.isMultiplayer && this.networkManager) {
-        this.networkManager.sendParticle({
-          type: "death",
-          x: x,
-          y: y,
-          playerId: remotePlayer.id,
-        });
-      }
-    }
-
-    // HP가 다시 올라가면 사망 상태 리셋
-    if (remotePlayer.networkState.health > 0) {
-      remotePlayer.particleState.hasDied = false;
-    }
-  }
-
-  // ☆ 원격 플레이어 사격 처리
-  // GameScene.ts의 handleRemotePlayerShoot 함수 수정
-  private handleRemotePlayerShoot(playerId: string, shootData: any): void {
-    if (!this.sys || !this.sys.isActive()) return;
-    const remotePlayer = this.remotePlayers.get(playerId);
-    if (!remotePlayer) return;
-
-    console.log(`사격 데이터 수신:`, shootData);
-
-    // 원격 플레이어 쏴용 소리 재생 (랜덤) - 중복 방지 강화
-    playShootSound(0.2); // 원격 플레이어 볼륨
-
-    // 1. 씬 상태 확인
-    if (!this.scene || !this.scene.add) {
-      console.warn("씬이 초기화되지 않아 원격 사격 처리 불가");
-      return;
-    }
-
-    // 2. 총구 위치 계산 (안전하게)
-    const gunX = shootData.gunX || shootData.x;
-    const gunY = shootData.gunY || shootData.y;
-
-    console.log(
-      `🎯 원격 총구 위치: (${gunX.toFixed(1)}, ${gunY.toFixed(1)}), 각도: ${(
-        (shootData.angle * 180) /
-        Math.PI
-      ).toFixed(1)}도`
-    );
-
-    // 3. ShootingManager에서 원격 총알 생성 (안전하게)
-    try {
-      if (this.shootingManager) {
-        // 서버 색상을 16진수에서 숫자로 변환
-        const serverColor = shootData.playerColor
-          ? parseInt(shootData.playerColor.replace("#", ""), 16)
-          : 0xff4444;
-
-        this.shootingManager.createRemotePlayerBullet({
-          gunX: gunX,
-          gunY: gunY,
-          angle: shootData.angle,
-          color: serverColor, // 서버 색상 사용
-          shooterId: playerId,
-          targetX: shootData.targetX, // 마우스 목표 위치 전달
-          targetY: shootData.targetY,
-          bulletConfig: shootData.bulletConfig, // 서버 설정 사용
-        });
-      }
-    } catch (error) {
-      console.warn("원격 총알 생성 실패:", error);
-    }
-
-    // 4. 플레이어 방향 업데이트
-    const deltaX = shootData.x - remotePlayer.lastPosition.x;
-    remotePlayer.networkState.facing = deltaX < 0 ? "left" : "right";
-
-    // 5. 사격 애니메이션 상태 업데이트
-    remotePlayer.animationState.lastShotTime = Date.now();
-    remotePlayer.animationState.shootRecoil += 1.0;
-    remotePlayer.animationState.wobble += 1.0;
   }
 
   // 증강 집계 효과를 조회 (ShootingManager와 동일 규칙)
@@ -1008,25 +725,7 @@ export default class GameScene extends Phaser.Scene {
 
   // ☆ 플레이어 퇴장 처리
   private handlePlayerLeave(playerId: string): void {
-    const remotePlayer = this.remotePlayers.get(playerId);
-    if (remotePlayer) {
-      console.log(`👋 플레이어 퇴장: ${remotePlayer.name}`);
-
-      // ☆ 그래픽 오브젝트들 제거
-      if (remotePlayer.gfxRefs) {
-        destroyCharacter(remotePlayer.gfxRefs);
-      }
-
-      // 체력바 그래픽 객체 제거
-      if (remotePlayer.hpBarGraphics) {
-        remotePlayer.hpBarGraphics.destroy();
-      }
-
-      //퇴장 시 태그 제거
-      this.uiManager.destroyNameTag(playerId);
-
-      this.remotePlayers.delete(playerId);
-
+    if (this.remotePlayerManager.removeRemotePlayer(playerId)) {
       // 로딩 모달 상태 업데이트
       this.updateLoadingModalState();
     }
@@ -1151,8 +850,7 @@ export default class GameScene extends Phaser.Scene {
     //내 플레이어 세팅 시 태그 만들기
     this.uiManager.createNameTag(playerData.id, playerData.name);
   }
-
-  // ☆ 원격 플레이어 생성 (완전히 새로운 구현)
+  // ☆ 원격 플레이어 생성 (스폰 좌표 선택 후 RemotePlayerManager에 위임)
   private createRemotePlayer(playerData: GamePlayer): void {
     const spawns = this.mapRenderer.getSpawns();
     const planIndex = this.gameData?.spawnPlan?.[playerData.id];
@@ -1183,103 +881,7 @@ export default class GameScene extends Phaser.Scene {
       );
     })();
 
-    // ☆ 핵심: 캐릭터 그래픽 생성
-    const characterColors: CharacterColors = {
-      head: this.parsePlayerColor(playerData.color),
-      limbs: this.parsePlayerColor(playerData.color),
-      gun: 0x333333,
-    };
-
-    // ☆ createCharacter 함수로 실제 그래픽 오브젝트들 생성
-    const gfxRefs = createCharacter(
-      this,
-      spawnPoint.x,
-      spawnPoint.y,
-      characterColors
-    );
-
-    // 원격 플레이어 객체 생성
-    const remotePlayer: RemotePlayer = {
-      id: playerData.id,
-      name: playerData.name,
-      team: playerData.team,
-      color: playerData.color,
-      gfxRefs: gfxRefs, // ☆ 그래픽 참조 저장
-      lastPosition: { x: spawnPoint.x, y: spawnPoint.y },
-      lastUpdate: Date.now(),
-      isVisible: true,
-      interpolation: {
-        targetX: spawnPoint.x,
-        targetY: spawnPoint.y,
-        currentX: spawnPoint.x,
-        currentY: spawnPoint.y,
-        targetVX: 0,
-        targetVY: 0,
-      },
-      networkState: {
-        isGrounded: true,
-        isJumping: false,
-        isCrouching: false,
-        isWallGrabbing: false,
-        facing: "right",
-        health: (playerData as any).health || 100, // 서버에서 받은 체력 정보 사용
-        mouseX: spawnPoint.x + 50, // 기본 마우스 위치
-        mouseY: spawnPoint.y,
-      },
-      particleState: {
-        hasDied: false,
-      },
-      animationState: {
-        armSwing: 0,
-        legSwing: 0,
-        wobble: 0,
-        shootRecoil: 0,
-        lastShotTime: 0,
-        isShooting: false,
-      },
-      // 체력바 관련 속성 초기화
-      hpBarGraphics: undefined,
-    };
-
-    // 그래픽 요소들의 가시성 확실히 설정 (로컬 플레이어와 동일한 depth)
-    if (gfxRefs.body) {
-      gfxRefs.body.setVisible(true);
-      gfxRefs.body.setDepth(-3); // 로컬과 동일
-    }
-    if (gfxRefs.face) {
-      gfxRefs.face.setVisible(true);
-      gfxRefs.face.setDepth(-3); // 로컬과 동일
-    }
-    if (gfxRefs.leftArm) {
-      gfxRefs.leftArm.setVisible(true);
-      gfxRefs.leftArm.setDepth(-5); // 로컬과 동일
-    }
-    if (gfxRefs.rightArm) {
-      gfxRefs.rightArm.setVisible(true);
-      gfxRefs.rightArm.setDepth(-5); // 로컬과 동일
-    }
-    if (gfxRefs.leftLeg) {
-      gfxRefs.leftLeg.setVisible(true);
-      gfxRefs.leftLeg.setDepth(-5); // 로컬과 동일
-    }
-    if (gfxRefs.rightLeg) {
-      gfxRefs.rightLeg.setVisible(true);
-      gfxRefs.rightLeg.setDepth(-5); // 로컬과 동일
-    }
-    if (gfxRefs.gun) {
-      gfxRefs.gun.setVisible(true);
-      gfxRefs.gun.setDepth(-5); // 로컬과 동일
-    }
-
-    // 체력바 그래픽 객체 생성
-    remotePlayer.hpBarGraphics = this.add.graphics();
-    remotePlayer.hpBarGraphics.setDepth(10); // UI 레이어
-
-    // Map에 저장
-    this.remotePlayers.set(playerData.id, remotePlayer);
-
-    //원격 플레이어 생성 시 태그 만들기
-    this.uiManager.createNameTag(playerData.id, playerData.name);
+    this.remotePlayerManager.createRemotePlayer(playerData, spawnPoint);
   }
 
   // ☆ 내 플레이어 색상 설정
@@ -1321,173 +923,6 @@ export default class GameScene extends Phaser.Scene {
         console.log("✅ 모든 플레이어 연결 완료 - 로딩 모달 닫힘");
       }, 2000); // 2초 후 닫기
     }
-  }
-
-  // ☆ 원격 플레이어들 업데이트
-  private updateRemotePlayers(deltaTime: number): void {
-    this.remotePlayers.forEach((remotePlayer) => {
-      // 보간 처리
-      this.interpolateRemotePlayer(remotePlayer, deltaTime);
-
-      // 애니메이션 상태 업데이트 (로컬 플레이어와 동일한 로직)
-      this.updateRemotePlayerAnimationState(remotePlayer, deltaTime);
-
-      // 애니메이션 렌더링
-      this.renderRemotePlayerAnimation(remotePlayer);
-    });
-  }
-
-  // ☆ 원격 플레이어 위치 보간
-  private interpolateRemotePlayer(
-    remotePlayer: RemotePlayer,
-    deltaTime: number
-  ): void {
-    const interpolation = remotePlayer.interpolation;
-    const lerpFactor = Math.min(deltaTime * 0.008, 1); // 부드러운 보간
-
-    // 현재 위치를 타겟으로 서서히 이동
-    interpolation.currentX +=
-      (interpolation.targetX - interpolation.currentX) * lerpFactor;
-    interpolation.currentY +=
-      (interpolation.targetY - interpolation.currentY) * lerpFactor;
-
-    // 속도는 targetVX를 직접 사용 (다리 애니메이션용)
-
-    // 실제 위치 업데이트
-    remotePlayer.lastPosition = {
-      x: interpolation.currentX,
-      y: interpolation.currentY,
-    };
-  }
-
-  // 원격 플레이어 체력바 렌더링
-  private renderRemotePlayerHealthBar(remotePlayer: RemotePlayer): void {
-    if (!remotePlayer.hpBarGraphics) {
-      console.warn(`⚠️ ${remotePlayer.name}의 체력바 그래픽이 없습니다`);
-      return;
-    }
-
-    // HP바 그래픽 초기화
-    remotePlayer.hpBarGraphics.clear();
-
-    // HP바 그리기 (상시 표시)
-    drawHealthBar(
-      remotePlayer.hpBarGraphics,
-      remotePlayer.lastPosition.x,
-      remotePlayer.lastPosition.y,
-      remotePlayer.networkState.health,
-      100,
-      0 // 타이머는 사용하지 않음
-    );
-  }
-
-  // ☆ 원격 플레이어 애니메이션 렌더링
-  private renderRemotePlayerAnimation(remotePlayer: RemotePlayer): void {
-    const refs = remotePlayer.gfxRefs;
-    if (!refs) {
-      console.warn(`⚠️ ${remotePlayer.name}의 gfxRefs가 없습니다`);
-      return;
-    }
-
-    // 가시성 체크 (사망 상태는 체력바 표시를 위해 제거)
-    if (!remotePlayer.isVisible) {
-      return;
-    }
-
-    const { x, y } = remotePlayer.lastPosition;
-    const facing = remotePlayer.networkState.facing;
-    const networkState = remotePlayer.networkState;
-
-    // 사망 상태 체크
-    const isDead = (remotePlayer.networkState.health || 0) <= 0;
-
-    // ⭐ 몸통 위치 업데이트
-    if (refs.body) {
-      refs.body.setPosition(x, y);
-      refs.body.setVisible(!isDead); // 사망 시 숨김
-      refs.body.setDepth(-3); // 로컬과 동일
-    }
-
-    // 로컬 플레이어와 동일한 애니메이션 시스템 사용
-    const characterColors: CharacterColors = {
-      head: this.parsePlayerColor(remotePlayer.color),
-      limbs: this.parsePlayerColor(remotePlayer.color),
-      gun: 0x333333,
-    };
-
-    // 모든 그래픽 요소 가시성 설정 (사망 시 숨김)
-    if (refs.leftArm) refs.leftArm.setVisible(!isDead);
-    if (refs.rightArm) refs.rightArm.setVisible(!isDead);
-    if (refs.leftLeg) refs.leftLeg.setVisible(!isDead);
-    if (refs.rightLeg) refs.rightLeg.setVisible(!isDead);
-    if (refs.gun) refs.gun.setVisible(!isDead);
-
-    // 사망하지 않은 경우에만 포즈와 팔다리 렌더링
-    if (!isDead) {
-      // 로컬 플레이어와 동일한 렌더링 시스템 사용
-      // 1. 포즈 업데이트 (몸통, 표정) - 로컬과 동일한 시스템 사용
-      updatePose(refs, {
-        x: x,
-        y: y,
-        wobble: remotePlayer.animationState.wobble,
-        crouchHeight: networkState.isCrouching ? 0.5 : 0,
-        baseCrouchOffset: 3,
-        wallLean: networkState.isWallGrabbing
-          ? facing === "right"
-            ? 5
-            : -5
-          : 0,
-        colors: characterColors,
-        health: networkState.health,
-        maxHealth: 100,
-        isWallGrabbing: networkState.isWallGrabbing,
-      });
-
-      // 2. 로컬과 동일한 팔다리 렌더링 시스템 사용
-      const pose = (remotePlayer as any).pose;
-      const mouseX = pose?.mouseX || x + (facing === "right" ? 50 : -50);
-      const mouseY = pose?.mouseY || y;
-
-      drawLimbs(refs, {
-        x: x,
-        y: y,
-        mouseX: mouseX,
-        mouseY: mouseY,
-        armSwing: 0, // 원격은 애니메이션만 사용
-        legSwing: 0,
-        crouchHeight: networkState.isCrouching ? 1 : 0,
-        baseCrouchOffset: 3,
-        isWallGrabbing: networkState.isWallGrabbing,
-        wallGrabDirection: networkState.isWallGrabbing ? facing : null,
-        isGrounded: networkState.isGrounded,
-        velocityX: remotePlayer.interpolation.targetVX, // 실제 속도 사용
-        colors: characterColors,
-        shootRecoil: 0,
-        currentTime: Date.now() / 1000,
-        currentFacing: facing,
-        isJumping: !networkState.isGrounded, // 점프 상태 추정 (지상에 없으면 점프 중으로 간주)
-      });
-    }
-
-    // 체력바 렌더링 (사망한 플레이어도 체력바는 표시)
-    this.renderRemotePlayerHealthBar(remotePlayer);
-
-    // 디버그: 주기적으로 위치 로그
-    if (Date.now() % 5000 < 16) {
-      console.log(
-        `📍 ${remotePlayer.name} 위치: (${x.toFixed(1)}, ${y.toFixed(
-          1
-        )}) 상태: ${JSON.stringify(networkState)}`
-      );
-    }
-  }
-
-  // ☆ 색상 파싱 헬퍼
-  private parsePlayerColor(colorStr: string): number {
-    if (typeof colorStr === "string" && colorStr.startsWith("#")) {
-      return parseInt(colorStr.slice(1), 16);
-    }
-    return 0x4a90e2; // 기본 파란색
   }
 
   // 맵 시스템 초기화
@@ -1890,7 +1325,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // ☆ 원격 플레이어들 업데이트 및 보간
-    this.updateRemotePlayers(deltaTime);
+    this.remotePlayerManager.updateRemotePlayers(deltaTime);
 
     // === [닉네임 태그 위치 갱신] =====================================
     // 내 플레이어: Player.getBounds()를 이용해 HP바 상단 근사치 계산
@@ -2454,14 +1889,7 @@ export default class GameScene extends Phaser.Scene {
 
     // ☆ 원격 플레이어들 정리
     try {
-      const playerIds = Array.from(this.remotePlayers.keys());
-      for (let i = 0; i < playerIds.length; i++) {
-        const remotePlayer = this.remotePlayers.get(playerIds[i]);
-        if (remotePlayer && remotePlayer.gfxRefs) {
-          destroyCharacter(remotePlayer.gfxRefs);
-        }
-      }
-      this.remotePlayers.clear();
+      this.remotePlayerManager.destroyAll();
     } catch (error) {
       // 원격 플레이어 정리 중 에러
     }
@@ -2776,59 +2204,6 @@ export default class GameScene extends Phaser.Scene {
     const roomName = this.gameData.room.roomName;
   }
 
-  // ☆ 원격 플레이어 애니메이션 상태 업데이트 (로컬 플레이어와 동일한 로직)
-  private updateRemotePlayerAnimationState(
-    remotePlayer: RemotePlayer,
-    deltaTime: number
-  ): void {
-    const anim = remotePlayer.animationState;
-    const network = remotePlayer.networkState;
-    const dt = deltaTime / 1000;
-    const now = Date.now();
-    const time = now * 0.01;
-
-    // 부드러운 애니메이션 파라미터 업데이트
-    if (network.isWallGrabbing) {
-      // 벽잡기 시 팔을 벽 쪽으로 뻗기
-      const wallDirection = network.facing === "right" ? 1 : -1;
-      anim.armSwing = wallDirection * 15;
-    } else if (network.isCrouching) {
-      // 웅크리기 시 팔을 아래로
-      anim.armSwing = Math.sin(time * 0.3) * 3;
-    } else if (Math.abs(remotePlayer.interpolation.targetVX) > 10) {
-      // 걷기/뛰기 시 팔 흔들기
-      anim.armSwing = Math.sin(time * 0.5) * 8;
-    } else {
-      // 가만히 있을 때도 자연스러운 팔 움직임
-      anim.armSwing = Math.sin(time * 0.2) * 3 + Math.sin(time * 0.1) * 2;
-    }
-
-    // 다리 애니메이션은 drawLimbs에서 자동 처리됨 (로컬과 동일)
-
-    // 부드러운 흔들림
-    anim.wobble = Math.sin(time * 0.3) * 0.5;
-    anim.shootRecoil *= 0.8;
-
-    // 사격 상태 업데이트
-    anim.isShooting = now - anim.lastShotTime < 200;
-
-    // 체력바는 상시 표시이므로 타이머 업데이트 제거
-
-    // 마우스 위치가 없거나 오래된 경우 방향 기반으로 추정 업데이트
-    const { x, y } = remotePlayer.lastPosition;
-    if (
-      !network.mouseX ||
-      !network.mouseY ||
-      now - remotePlayer.lastUpdate > 1000
-    ) {
-      // 방향 기반으로 마우스 위치 추정 (더 자연스러운 각도)
-      const angle = Math.random() * Math.PI * 2; // 랜덤 각도
-      const distance = 30 + Math.random() * 40; // 30-70 픽셀 거리
-      network.mouseX = x + Math.cos(angle) * distance;
-      network.mouseY = y + Math.sin(angle) * distance;
-    }
-  }
-
   private updatePerformanceMonitoring(time: number, deltaTime: number): void {
     this.frameCount++;
 
@@ -2876,3 +2251,4 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 }
+

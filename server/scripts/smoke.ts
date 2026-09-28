@@ -65,9 +65,14 @@ async function main() {
   const hp = await call(a, "room:info", { roomId });
   assert.equal(hp.room.players.find((p: any) => p.id === b.id).health, 100, "spoofed/negative damage applied");
 
+  // 클라가 보고한 데미지(100)는 무시되고 서버 공식(기본 25)이 적용된다
+  const hpUpdate = next(b, "game:healthUpdate");
+  a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, damage: 100, bulletId: "collision_1" } });
+  assert.equal((await hpUpdate).health, 75, "server should compute damage");
+
   // A가 B를 처치 → 라운드 결과 → 증강 단계
   const result = next(a, "round:result");
-  a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, damage: 100 } });
+  for (let i = 0; i < 3; i++) a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, bulletId: "collision_1" } });
   // 죽은 B는 반격할 수 없다
   b.emit("game:bulletHit", { hit: { targetPlayerId: a.id, damage: 100 } });
   const r = await result;
@@ -75,9 +80,21 @@ async function main() {
   assert.equal(r.players.find((p: any) => p.id === b.id).wins, 0, "dead shooter scored");
   const aug = await next(a, "round:augment");
 
-  // 증강 단계에서 B가 나가면 A는 갇히지 않고 게임이 끝난다
-  const final = next(a, "game:final");
+  // 증강 선택 완료 → 다음 라운드. 기생충: 데미지 25-10=15, 이후 1초마다 3씩 흡수
+  const complete = next(a, "augment:complete");
   assert((await call(a, "augment:select", { augmentId: "기생충", round: aug.round })).ok);
+  assert((await call(b, "augment:select", { augmentId: "빨리뽑기", round: aug.round })).ok);
+  await complete;
+  await sleep(100);
+  const hit = next(b, "game:healthUpdate");
+  a.emit("game:bulletHit", { hit: { targetPlayerId: b.id, bulletId: "collision_2" } });
+  assert.equal((await hit).health, 85, "parasite damage should be 15");
+  await sleep(1150);
+  const afterTick = await call(a, "room:info", { roomId });
+  assert.equal(afterTick.room.players.find((p: any) => p.id === b.id).health, 82, "parasite tick");
+
+  // 게임 중 B가 나가면 A는 갇히지 않고 게임이 끝난다
+  const final = next(a, "game:final");
   b.disconnect();
   const fin = await final;
   assert.deepEqual(fin.winnerIds, [a.id], "remaining player should win");

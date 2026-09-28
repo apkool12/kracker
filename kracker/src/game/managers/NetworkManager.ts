@@ -161,10 +161,10 @@ export class NetworkManager {
           vx: data.vx,
           vy: data.vy,
           facing: facing,
-          isGrounded: true,
-          isJumping: false,
-          isCrouching: false,
-          isWallGrabbing: false,
+          isGrounded: !!data.g,
+          isJumping: !!data.j,
+          isCrouching: !!data.c,
+          isWallGrabbing: !!data.w,
           health: 100,
         };
         this.onPlayerMoveCallback(data.id, movement);
@@ -255,6 +255,10 @@ export class NetworkManager {
       vx: movement.vx,
       vy: movement.vy,
       facing: movement.facing === "left" ? "L" : "R",
+      g: movement.isGrounded ? 1 : 0,
+      j: movement.isJumping ? 1 : 0,
+      c: movement.isCrouching ? 1 : 0,
+      w: movement.isWallGrabbing ? 1 : 0,
     });
 
     this.lastSentMovement = movement;

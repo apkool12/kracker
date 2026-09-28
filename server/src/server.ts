@@ -3,6 +3,8 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
 type Team = "A" | "B";
 type Status = "waiting" | "playing" | "ended";
 type Visibility = "public" | "private";
@@ -57,8 +59,52 @@ type Room = {
 
 const MAX_ROOMS = 5;
 const TEAM_CAP = 3;
-const MAX_HIT_DAMAGE = 100; // ponytail: 클라 보고 데미지 상한. 서버가 증강으로 직접 계산하면 제거
+const MAX_HIT_DAMAGE = 100; // 낙하 등 클라가 보고하는 자기 피해의 상한
 const WINS_TO_FINAL = 5;
+const BASE_BULLET_DAMAGE = 25; // 클라 ShootingManager 기본 damage 와 동일
+const BASE_MAX_HEALTH = 100;
+
+// 증강 정의: 클라이언트와 같은 파일을 공유 (src/, dist/ 둘 다 같은 깊이)
+type AugmentDef = {
+  id: string;
+  effects?: {
+    bullet?: {
+      damageMul?: number;
+      damageAdd?: number;
+      poisonDps?: number;
+      poisonTicks?: number;
+      poisonIntervalMs?: number;
+      parasiteDps?: number;
+      parasiteTicks?: number;
+      slowOnHitMs?: number;
+      slowMul?: number;
+      stunMs?: number;
+      knockbackMul?: number;
+    };
+    player?: { maxHealthDelta?: number };
+  };
+};
+const AUGMENT_DEFS = new Map<string, AugmentDef>(
+  (JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../../kracker/src/data/augments.json"), "utf8")
+  ) as AugmentDef[]).map((a) => [a.id, a])
+);
+const augEffects = (p: Player) =>
+  Object.keys(p.augments || {}).map((id) => AUGMENT_DEFS.get(id)?.effects || {});
+
+// 서버 권위 총알 데미지: 클라 buildBulletConfig 와 같은 공식
+function bulletDamage(p: Player): number {
+  let mul = 1;
+  let add = 0;
+  for (const e of augEffects(p)) {
+    mul *= e.bullet?.damageMul ?? 1;
+    add += e.bullet?.damageAdd ?? 0;
+  }
+  return Math.max(0, Math.round(BASE_BULLET_DAMAGE * mul + add));
+}
+function maxHealthOf(p: Player): number {
+  return BASE_MAX_HEALTH + augEffects(p).reduce((s, e) => s + (e.player?.maxHealthDelta ?? 0), 0);
+}
 
 const str = (v: unknown, max: number, fallback = "") =>
   typeof v === "string" && v.trim() ? v.trim().slice(0, max) : fallback;
@@ -626,70 +672,21 @@ io.on("connection", (socket) => {
     // 죽은 사수의 총알은 무효 (자기 자신 낙하 데미지는 예외 없이 동일 규칙)
     if ((shooter.health ?? 100) <= 0) return;
 
-    const damage = Math.min(MAX_HIT_DAMAGE, Math.max(0, num(hit.damage) ?? 25));
-    const newHealth = applyDamage(room, targetId, damage);
-    if (newHealth === null) return;
-
     // 증강 효과는 상대를 맞췄을 때만 (낙하 데미지 등 자기 피격 제외)
     const isSelfHit = targetId === shooterId;
+    const isSplash = String(hit.bulletId ?? "").startsWith("explosion_");
+    const damage = isSelfHit
+      ? Math.min(MAX_HIT_DAMAGE, Math.max(0, num(hit.damage) ?? 0))
+      : isSplash
+        ? Math.round(bulletDamage(shooter) * 0.5)
+        : bulletDamage(shooter);
+    const newHealth = applyDamage(room, targetId, damage);
+    if (newHealth === null) return;
     const hx = num(hit.x) ?? target.x ?? 0;
     const hy = num(hit.y) ?? target.y ?? 0;
 
-    if (!isSelfHit && newHealth > 0) {
-      // 독걸려랑: DoT (초당 5뎀, 3틱) / 벌이야!: DoT (2초당 5뎀, 3틱)
-      if (shooter.augments?.["독걸려랑"]) scheduleDot(room, targetId, 5, 3, 1000);
-      if (shooter.augments?.["벌이야!"]) scheduleDot(room, targetId, 5, 3, 2000);
-    }
-
-    // ===== 서버 권위 상태이상/버프 처리 =====
-    if (!isSelfHit && shooter.augments) {
-      // 끈적여요: 둔화 (augments.json 기준 1500ms, 0.5)
-      if (shooter.augments["끈적여요"]) {
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: { status: "slow", ms: 1500, multiplier: 0.5 },
-        });
-      }
-
-      // 앗따거: 스턴(1000ms)
-      if (shooter.augments["앗따거"]) {
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: { status: "stun", ms: 1000 },
-        });
-      }
-
-      // 잠깐만: 넉백 (기본 임펄스 * 2)
-      if (shooter.augments["잠깐만"]) {
-        let dx = (target.x ?? hx) - hx;
-        let dy = (target.y ?? hy) - hy;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const impulseBase = 400 * 2;
-        io.to(roomId).emit("game:event", {
-          type: "status",
-          playerId: targetId,
-          data: {
-            status: "knockback",
-            vx: (dx / len) * impulseBase,
-            vy: (dy / len) * impulseBase,
-            ms: 0,
-          },
-        });
-      }
-
-      // 기생충: 라이프스틸(+15) — 살아있는 사수만
-      if (shooter.augments["기생충"] && (shooter.health ?? 100) > 0) {
-        shooter.health = Math.min(100, (shooter.health ?? 100) + 15);
-        io.to(roomId).emit("game:healthUpdate", {
-          playerId: shooterId,
-          health: shooter.health,
-          damage: 0,
-          timestamp: Date.now(),
-        });
-      }
-    }
+    // ===== 서버 권위 상태이상 (augments.json 수치 기준) =====
+    if (!isSelfHit) applyOnHitEffects(room, shooter, targetId, target, hx, hy, newHealth);
 
     // 기존 충돌 이벤트도 전송
     io.to(roomId).emit("game:bulletHit", hit);
@@ -860,18 +857,73 @@ function applyDamage(room: Room, targetId: string, damage: number): number | nul
 }
 
 // 도트 데미지: 라운드가 바뀌면(체력 리셋 등) 자동 중단
-function scheduleDot(room: Room, targetId: string, dmg: number, ticks: number, intervalMs: number) {
+function scheduleDot(
+  room: Room,
+  targetId: string,
+  dmg: number,
+  ticks: number,
+  intervalMs: number,
+  onTick?: (dealt: number) => void
+) {
   const round = room.currentRound;
   const timer = setInterval(() => {
-    if (
-      rooms.get(room.roomId) !== room ||
-      room.currentRound !== round ||
-      applyDamage(room, targetId, dmg) === null
-    ) {
-      return clearInterval(timer);
-    }
+    const before = room.players[targetId]?.health ?? 0;
+    const after =
+      rooms.get(room.roomId) === room && room.currentRound === round
+        ? applyDamage(room, targetId, dmg)
+        : null;
+    if (after === null) return clearInterval(timer);
+    onTick?.(before - after);
     if (--ticks <= 0 || (room.players[targetId]?.health ?? 0) <= 0) clearInterval(timer);
   }, intervalMs);
+}
+
+// 적중 시 사수 증강의 상태이상 적용. 같은 효과가 여러 개면 가장 강한 값 사용(클라 집계와 동일)
+function applyOnHitEffects(
+  room: Room,
+  shooter: Player,
+  targetId: string,
+  target: Player,
+  hx: number,
+  hy: number,
+  newHealth: number
+) {
+  const rid = room.roomId;
+  let slowMs = 0, slowMul = 1, stunMs = 0, knockMul = 1;
+  for (const e of augEffects(shooter)) {
+    const b = e.bullet;
+    if (!b) continue;
+    if (newHealth > 0 && b.poisonDps && b.poisonTicks)
+      scheduleDot(room, targetId, b.poisonDps, b.poisonTicks, b.poisonIntervalMs ?? 1000);
+    if (newHealth > 0 && b.parasiteDps && b.parasiteTicks)
+      // 기생충: 틱마다 입힌 만큼 사수 회복 (살아있을 때만)
+      scheduleDot(room, targetId, b.parasiteDps, b.parasiteTicks, 1000, (dealt) => {
+        if (dealt <= 0 || (shooter.health ?? 0) <= 0 || !room.players[shooter.id]) return;
+        shooter.health = Math.min(maxHealthOf(shooter), (shooter.health ?? 0) + dealt);
+        io.to(rid).emit("game:healthUpdate", {
+          playerId: shooter.id,
+          health: shooter.health,
+          damage: 0,
+          timestamp: Date.now(),
+        });
+      });
+    slowMs = Math.max(slowMs, b.slowOnHitMs ?? 0);
+    slowMul = Math.min(slowMul, b.slowMul ?? 1);
+    stunMs = Math.max(stunMs, b.stunMs ?? 0);
+    knockMul *= b.knockbackMul ?? 1;
+  }
+
+  const status = (data: object) =>
+    io.to(rid).emit("game:event", { type: "status", playerId: targetId, data });
+  if (slowMs > 0) status({ status: "slow", ms: slowMs, multiplier: slowMul });
+  if (stunMs > 0) status({ status: "stun", ms: stunMs });
+  if (knockMul > 1) {
+    const dx = (target.x ?? hx) - hx;
+    const dy = (target.y ?? hy) - hy;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const impulse = 400 * knockMul;
+    status({ status: "knockback", vx: (dx / len) * impulse, vy: (dy / len) * impulse, ms: 0 });
+  }
 }
 
 // 🔎 라운드 종료 판정 및 스케줄링 (3초 대기 후 방송)
@@ -929,10 +981,10 @@ function tryCompleteAugments(room: Room): boolean {
     t: Date.now(),
   });
 
-  // 전원 체력 회복 + 스폰 복귀 + 부활, 그리고 전투 재개
+  // 전원 체력 회복(증강 최대 체력 반영) + 스폰 복귀 + 부활, 그리고 전투 재개
   Object.values(room.players).forEach((p) => {
-    p.health = 100;
-    io.to(rid).emit("game:healthUpdate", { playerId: p.id, health: 100, damage: 0, timestamp: Date.now() });
+    p.health = maxHealthOf(p);
+    io.to(rid).emit("game:healthUpdate", { playerId: p.id, health: p.health, damage: 0, timestamp: Date.now() });
   });
   Object.keys(room.players).forEach((playerId, index) => {
     io.to(rid).emit("game:event", {
