@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { ReactComponent as CaretIcon } from "../../assets/images/mdi_triangle.svg";
+import CaretIcon from "../../assets/images/mdi_triangle.svg?react";
 import BgBase from "../../assets/images/titleBackground.svg";
 
 type PlayerCardProps = {

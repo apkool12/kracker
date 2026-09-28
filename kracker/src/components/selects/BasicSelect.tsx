@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { ReactComponent as CaretIcon } from "../../assets/images/mdi_triangle.svg";
-import { error } from "node:console";
+import CaretIcon from "../../assets/images/mdi_triangle.svg?react";
 
 export type OptionItem = { value: string; label: string };
 

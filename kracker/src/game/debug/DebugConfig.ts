@@ -170,7 +170,7 @@ export class DebugConfig {
   private constructor() {
     // 환경에 따라 기본 설정 선택
     const isDevelopment =
-      process.env.NODE_ENV === "development" ||
+      import.meta.env.DEV ||
       window.location.hostname === "localhost" ||
       window.location.search.includes("debug=true");
 
@@ -283,7 +283,7 @@ export class DebugConfig {
   reset(): void {
     localStorage.removeItem(this.storageKey);
     const isDevelopment =
-      process.env.NODE_ENV === "development" ||
+      import.meta.env.DEV ||
       window.location.hostname === "localhost";
     this.settings = isDevelopment
       ? { ...developmentConfig }

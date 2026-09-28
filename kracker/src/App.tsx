@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import NicknameModal from "../src/components/modals/NicknameModal";
+import NicknameModal from "./components/modals/NicknameModal";
 import {
   BrowserRouter,
   Routes,

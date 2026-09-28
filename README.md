@@ -1,7 +1,7 @@
 # kracker
 웹소켓 기반 1대1 실시간 결투 게임
 
-백엔드 서버 실행 방법 - localhost:3001
+백엔드 서버 실행 방법 - localhost:4000
 <br/>
 <br/>
 
@@ -17,5 +17,6 @@ npx ts-node server.ts
 
 ```
 cd ./kracker
-npm start
+npm install
+npm run dev
 ```
