@@ -692,6 +692,8 @@ export default class Player {
       velocityY: this.velocityY,
       isGrounded: this.isGrounded,
       facing: this.facingDirection,
+      aimX: this.mouseX,
+      aimY: this.mouseY,
     });
 
     drawLimbs(this.gfx, {

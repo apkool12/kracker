@@ -15,34 +15,36 @@ export function drawGun(
 ) {
   gunGfx.clear();
 
-  // 총 색상을 몸통 색상과 동일하게 설정
-  const gunColor = colors.head;
-  const baseLength = 30;
-  const gunLength = baseLength + shootRecoil * 3;
-  const gunWidth = 4;
+  // 몸통색과 구분되는 금속 총 (길이/각도는 기존과 동일 → 총구 위치 계산 영향 없음)
+  const METAL = 0x2b2f36;
+  const EDGE = 0x5d6570;
+  const gunLength = 30 + shootRecoil * 3;
+  const cos = Math.cos(gunAngle);
+  const sin = Math.sin(gunAngle);
+  const at = (d: number, off = 0) => ({
+    x: armEndX + cos * d - sin * off,
+    y: armEndY + sin * d + cos * off,
+  });
+  const line = (w: number, c: number, a: { x: number; y: number }, b: { x: number; y: number }) => {
+    gunGfx.lineStyle(w, c);
+    gunGfx.beginPath();
+    gunGfx.moveTo(a.x, a.y);
+    gunGfx.lineTo(b.x, b.y);
+    gunGfx.strokePath();
+  };
 
-  // 총신 끝 위치 계산
-  const gunEndX = armEndX + Math.cos(gunAngle) * gunLength;
-  const gunEndY = armEndY + Math.sin(gunAngle) * gunLength;
-
-  // 총신 그리기 (단순하게)
-  gunGfx.lineStyle(gunWidth, gunColor);
-  gunGfx.beginPath();
-  gunGfx.moveTo(armEndX, armEndY);
-  gunGfx.lineTo(gunEndX, gunEndY);
-  gunGfx.strokePath();
-
-  // 손잡이 그리기 (단순하게)
-  const handleLength = 10;
-  const handleAngle = gunAngle + (isLeft ? -Math.PI / 2 : Math.PI / 2);
-  const handleEndX = armEndX + Math.cos(handleAngle) * handleLength;
-  const handleEndY = armEndY + Math.sin(handleAngle) * handleLength;
-
-  gunGfx.lineStyle(3, gunColor);
-  gunGfx.beginPath();
-  gunGfx.moveTo(armEndX, armEndY);
-  gunGfx.lineTo(handleEndX, handleEndY);
-  gunGfx.strokePath();
+  // 손잡이
+  const side = isLeft ? -1 : 1;
+  line(4.5, METAL, at(2), at(-1, side * 9));
+  // 몸체(두꺼움) → 총신(얇음)
+  line(7, METAL, at(-2), at(gunLength * 0.55));
+  line(4, METAL, at(gunLength * 0.55), at(gunLength));
+  // 윗면 하이라이트
+  line(1.5, EDGE, at(0, -side * 2.5), at(gunLength * 0.5, -side * 2.5));
+  // 총구
+  const tip = at(gunLength);
+  gunGfx.fillStyle(EDGE);
+  gunGfx.fillCircle(tip.x, tip.y, 2.4);
 }
 
 /**
