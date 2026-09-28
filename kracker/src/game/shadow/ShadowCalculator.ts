@@ -184,36 +184,46 @@ export class ShadowCalculator {
   }
 
 
-  /** 점광원 그림자: 플랫폼 네 변을 광원 반대 방향으로 길게 밀어낸 사각형들의 합집합 */
+  /**
+   * 점광원 그림자: 기존 사다리꼴(윗변에서 시작해 양옆으로 폭의 0.6배씩 벌어짐)을
+   * 광원 → 플랫폼 방향으로 회전시킨 것. 광원이 바로 위면 기존 90° 사다리꼴과 동일.
+   */
   private calculatePointLightShadow(
     platform: Platform,
     light: { x: number; y: number }
   ): ShadowPolygon[] {
     const { x, y, width: w, height: h } = platform;
-    // 광원이 플랫폼 안이면 그림자 없음
     if (light.x > x && light.x < x + w && light.y > y && light.y < y + h) return [];
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const dl = Math.hypot(cx - light.x, cy - light.y) || 1;
+    const dx = (cx - light.x) / dl; // 그림자 진행 방향
+    const dy = (cy - light.y) / dl;
+    const nx = -dy; // 진행 방향의 수직
+    const ny = dx;
+
+    // 진행 방향에서 본 플랫폼의 반폭/반두께
+    const hw = Math.abs(nx) * (w / 2) + Math.abs(ny) * (h / 2);
+    const hd = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
+    // 광원 쪽 면(위에서 비출 때의 윗변)에서 시작
+    const bx = cx - dx * hd;
+    const by = cy - dy * hd;
     const len = this.lightConfig.maxLength || 1500;
-    const corners = [
-      { x, y },
-      { x: x + w, y },
-      { x: x + w, y: y + h },
-      { x, y: y + h },
+    // 기존: 아래쪽 반폭 = 반폭 + 폭*0.6 → 반폭 * 2.2 (최대 확산 폭*3.5 이내)
+    const farHalf = Math.min(hw * 2.2, hw * 3.5);
+    const fx = bx + dx * len;
+    const fy = by + dy * len;
+
+    return [
+      {
+        points: [
+          bx - nx * hw, by - ny * hw,
+          bx + nx * hw, by + ny * hw,
+          fx + nx * farHalf, fy + ny * farHalf,
+          fx - nx * farHalf, fy - ny * farHalf,
+        ],
+      },
     ];
-    const far = (p: { x: number; y: number }) => {
-      const dx = p.x - light.x;
-      const dy = p.y - light.y;
-      const d = Math.hypot(dx, dy) || 1;
-      return { x: p.x + (dx / d) * len, y: p.y + (dy / d) * len };
-    };
-    const out: ShadowPolygon[] = [];
-    for (let i = 0; i < 4; i++) {
-      const a = corners[i]!;
-      const b = corners[(i + 1) % 4]!;
-      const fa = far(a);
-      const fb = far(b);
-      out.push({ points: [a.x, a.y, b.x, b.y, fb.x, fb.y, fa.x, fa.y] });
-    }
-    return out;
   }
 
   private getLightDirection(): { x: number; y: number } {
