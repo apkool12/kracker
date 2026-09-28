@@ -1,3 +1,4 @@
+import MAP_LIST from "../../data/maps.json";
 // src/game/maps/MapLoader.ts
 import { Platform } from "../config";
 
@@ -28,6 +29,7 @@ export interface MapData {
     name: string;
     width: number;
     height: number;
+    theme?: "jungle" | "stone"; // 플랫폼 색/장식 테마
   };
   background?: MapBackground;
   images?: MapImage[];
@@ -164,16 +166,16 @@ export class MapLoader {
     return this.presets.get(key) || null;
   }
 
-  // level1.json만 로드 (실패시 에러)
+  // data/maps.json 에 등록된 모든 맵 로드 (기본 맵 level1 은 필수)
   static async initializeDefaultMaps() {
-    try {
-      await this.loadTiledPreset("level1");
-      console.log("✅ level1.json loaded successfully");
-    } catch (error) {
-      console.error("❌ Failed to load level1.json:", error);
-      console.error("Make sure public/maps/level1.json exists!");
-      throw new Error("level1.json is required but not found");
-    }
+    await Promise.all(
+      MAP_LIST.map((m) =>
+        this.loadTiledPreset(m.key).catch((error) => {
+          console.error(`❌ Failed to load ${m.key}.json:`, error);
+          if (m.key === "level1") throw new Error("level1.json is required but not found");
+        })
+      )
+    );
   }
 }
 

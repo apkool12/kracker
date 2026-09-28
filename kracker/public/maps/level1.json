@@ -1,7 +1,7 @@
 {
   "meta": {
     "key": "level1",
-    "name": "정글 1",
+    "name": "정글", "theme": "jungle",
     "width": 1920,
     "height": 1080
   },

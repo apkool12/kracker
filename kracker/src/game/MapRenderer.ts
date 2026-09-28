@@ -154,8 +154,14 @@ export default class MapRenderer {
 
   /** ⭐ 플랫폼 그라데이션 그리기 */
   private drawPlatformGradient(platform: Platform): void {
+    // 암벽 테마: 차가운 회청색 바위
+    const stoneSchemes = [
+      { top: 0x4a5160, bottom: 0x1c1f27 },
+      { top: 0x3f4654, bottom: 0x171a21 },
+      { top: 0x535a68, bottom: 0x20232b },
+    ];
     // 네이비 그린 계열의 어두운 플랫폼 색상 조합들
-    const colorSchemes = [
+    const jungleSchemes = [
       // 1. 네이비 그린 → 다크 네이비 그린 (깊이감 있는 그라데이션)
       { top: 0x1a4a2a, bottom: 0x0a1a1a },
       // 2. 다크 포레스트 → 네이비 포레스트 (어두운 숲 느낌)
@@ -168,6 +174,7 @@ export default class MapRenderer {
       { top: 0x1a3a2a, bottom: 0x0a1a1a },
     ];
 
+    const colorSchemes = this.isStone() ? stoneSchemes : jungleSchemes;
     // 플랫폼 위치에 따라 다른 색상 스킴 선택 (다채롭게)
     const schemeIndex =
       Math.floor((platform.x + platform.y) / 200) % colorSchemes.length;
@@ -218,7 +225,9 @@ export default class MapRenderer {
       0x00ffaa, // 매우 밝은 연두색
     ];
 
-    const glowColor = glowColors[Math.floor(Math.random() * glowColors.length)];
+    const glowColor = this.isStone()
+      ? 0xffb35c // 암벽: 따뜻한 횃불빛 테두리
+      : glowColors[Math.floor(Math.random() * glowColors.length)];
     const glowAlpha = 0.5; // 야광 투명도 증가
 
     // 플랫폼 테두리 야광 효과
@@ -861,7 +870,12 @@ export default class MapRenderer {
   }
 
   /** 🌿 정글 분위기 요소들 추가 */
+  private isStone(): boolean {
+    return this.currentMap?.meta?.theme === "stone";
+  }
+
   private addJungleElements(width: number, height: number): void {
+    if (this.isStone()) return; // 암벽 맵엔 정글 잎/덩굴 없음
     // 기존 정글 요소들 정리
     if (this.jungleElements) {
       this.jungleElements.forEach((element) => element.destroy());
