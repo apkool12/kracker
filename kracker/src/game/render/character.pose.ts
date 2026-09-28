@@ -1,4 +1,5 @@
 // src/game/render/character.pose.ts
+import { squashStretch } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { renderBodyWithGradient, createGradientColors } from "./character.core";
 
@@ -124,12 +125,20 @@ export function updateFace(
     maxHealth: number;
     isWallGrabbing?: boolean;
     colors: CharacterColors;
+    facing?: "left" | "right";
+    scaleY?: number;
   }
 ) {
   const { face } = refs;
-  const { x, y, health, maxHealth, isWallGrabbing, colors } = params;
-
+  const { health, maxHealth, isWallGrabbing, colors } = params;
+  const dir = params.facing === "left" ? -1 : 1;
+  const sy = params.scaleY ?? 1;
+  // 얼굴 좌표계: 오른쪽 기준으로 그리고, 왼쪽을 볼 땐 좌우 반전 (세로는 몸 스케일 따라감)
   face.clear();
+  face.setPosition(params.x, params.y);
+  face.setScale(dir, sy);
+  const x = 0;
+  const y = 0;
 
   // 얼굴 색상 (몸통보다 약간 밝게)
   const faceColors = createGradientColors(colors.head);
@@ -194,6 +203,9 @@ export function updatePose(
     maxHealth: number;
     isWallGrabbing?: boolean;
     scaleOverride?: { x: number; y: number }; // 옵션
+    velocityY?: number; // 있으면 착지 찌그러짐/공중 늘어남 적용
+    isGrounded?: boolean;
+    facing?: "left" | "right";
   }
 ) {
   const { body } = refs;
@@ -209,20 +221,27 @@ export function updatePose(
     maxHealth,
     isWallGrabbing,
     scaleOverride,
+    velocityY,
+    isGrounded = true,
+    facing = "right",
   } = params;
 
   const crouchOffset = crouchHeight * baseCrouchOffset;
+  const ss =
+    velocityY === undefined
+      ? { sx: 1, sy: 1, sink: 0 }
+      : squashStretch(refs, velocityY, isGrounded);
 
-  // 살짝 좌우/상하 흔들림
+  // 살짝 좌우/상하 흔들림 (+ 착지 시 눌린 만큼 가라앉음)
   const finalX = x + Math.sin(wobble) * 1 + wallLean;
-  const finalY = y + Math.cos(wobble * 1.5) * 0.5 + crouchOffset;
+  const finalY = y + Math.cos(wobble * 1.5) * 0.5 + crouchOffset + ss.sink;
 
   body.x = finalX;
   body.y = finalY;
 
-  // 스케일(웅크리기)
-  const scaleY = scaleOverride?.y ?? 1 - crouchHeight * 0.04;
-  const scaleX = scaleOverride?.x ?? 1 + crouchHeight * 0.005;
+  // 스케일(웅크리기 × squash/stretch)
+  const scaleY = scaleOverride?.y ?? (1 - crouchHeight * 0.04) * ss.sy;
+  const scaleX = scaleOverride?.x ?? (1 + crouchHeight * 0.005) * ss.sx;
   body.setScale(scaleX, scaleY);
 
   // 그라데이션으로 몸통 렌더링
@@ -237,5 +256,7 @@ export function updatePose(
     maxHealth,
     isWallGrabbing,
     colors,
+    facing,
+    scaleY,
   });
 }

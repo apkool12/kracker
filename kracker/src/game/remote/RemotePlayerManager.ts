@@ -513,7 +513,7 @@ export class RemotePlayerManager {
         x: x,
         y: y,
         wobble: remotePlayer.animationState.wobble,
-        crouchHeight: networkState.isCrouching ? 0.5 : 0,
+        crouchHeight: networkState.isCrouching ? 1 : 0,
         baseCrouchOffset: 3,
         wallLean: networkState.isWallGrabbing
           ? facing === "right"
@@ -524,6 +524,9 @@ export class RemotePlayerManager {
         health: networkState.health,
         maxHealth: 100,
         isWallGrabbing: networkState.isWallGrabbing,
+        velocityY: remotePlayer.interpolation.targetVY,
+        isGrounded: networkState.isGrounded,
+        facing,
       });
 
       // 2. 로컬과 동일한 팔다리 렌더링 시스템 사용
@@ -548,7 +551,7 @@ export class RemotePlayerManager {
         shootRecoil: 0,
         currentTime: Date.now() / 1000,
         currentFacing: facing,
-        isJumping: !networkState.isGrounded, // 점프 상태 추정 (지상에 없으면 점프 중으로 간주)
+        isJumping: networkState.isJumping, // 상승 중만 점프, 그 외 공중은 낙하 모션
       });
     }
 
