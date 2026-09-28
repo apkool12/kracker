@@ -28,6 +28,7 @@ import { CameraManager } from "./managers/CameraManager";
 import { ShadowManager } from "./managers/ShadowManager";
 import { ShootingManager } from "./managers/ShootingManager";
 import CollisionSystem from "./systems/CollisionSystem";
+import { LightingSystem } from "./fx/Lighting";
 import {
   RemotePlayerManager,
   type RemotePlayer,
@@ -215,6 +216,19 @@ export default class GameScene extends Phaser.Scene {
 
       // 파티클 시스템 초기화
       this.particleSystem = new ParticleSystem(this, true);
+
+      // 분위기: 동적 조명(총알/섬광 광원 + 플랫폼 그림자) → 블룸 → 비네팅
+      this.lighting = new LightingSystem(
+        this,
+        () => this.shootingManager?.getAllBullets() ?? [],
+        () => this.mapRenderer?.getPlatforms() ?? []
+      );
+      // 개발 모드 디버그/E2E 용 씬 핸들 (프로덕션 빌드에선 제거됨)
+      if (import.meta.env.DEV) (window as any).__scene = this;
+
+      const fx = this.cameras.main.postFX;
+      fx?.addBloom(0xffffff, 1, 1, 1, 0.9, 4);
+      fx?.addVignette(0.5, 0.5, 0.92, 0.32);
 
       this.sceneState = GAME_STATE.SCENE_STATES.RUNNING;
       this.isInitialized = true;
@@ -1277,6 +1291,8 @@ export default class GameScene extends Phaser.Scene {
 
     const dt = deltaTime / 1000;
 
+    this.lighting?.update(deltaTime);
+
     // 플레이어 업데이트
     if (this.player && this.player.update) {
       this.player.update(deltaTime);
@@ -1868,11 +1884,17 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Phaser Scene 생명주기 - shutdown
+  private lighting?: LightingSystem;
   private hasShutDown = false;
   shutdown(): void {
     // SHUTDOWN/DESTROY 둘 다 올 수 있으므로 한 번만
     if (this.hasShutDown) return;
     this.hasShutDown = true;
+    try {
+      this.lighting?.destroy();
+      this.cameras?.main?.postFX?.clear();
+    } catch {}
+    this.lighting = undefined;
 
     // 상태 변경
     this.sceneState = GAME_STATE.SCENE_STATES.LOADING;
