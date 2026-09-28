@@ -8,24 +8,16 @@ export interface AugmentInfo {
   image: string; // 카드 이미지 경로
 }
 
-// 이미지 로더: 폴더 내 svg를 동적으로 로드하여 파일명 -> URL 매핑 생성
-// CRA(Webpack) 환경에서 require.context 사용
-const imageMap: Record<string, string> = (() => {
-  try {
-    const req = (require as any).context("../assets/cards", false, /\.svg$/);
-    const map: Record<string, string> = {};
-    req.keys().forEach((key: string) => {
-      const fileName = key.replace(/^\.\//, "");
-      const mod = req(key);
-      const url: string = (mod && (mod.default || mod)) as string;
-      map[fileName] = url;
-    });
-    return map;
-  } catch (e) {
-    // Fallback: 빈 맵
-    return {} as Record<string, string>;
-  }
-})();
+// 이미지 로더: 폴더 내 svg 파일명 -> URL 매핑 (Vite glob import)
+const imageMap: Record<string, string> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>("../assets/cards/*.svg", {
+      eager: true,
+      query: "?url",
+      import: "default",
+    })
+  ).map(([path, url]) => [path.split("/").pop()!, url])
+);
 
 const jsonData: Array<{
   id: string;

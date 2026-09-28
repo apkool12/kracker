@@ -47,7 +47,6 @@ export class MapLoader {
   static async loadTiledPreset(mapKey: string): Promise<MapData> {
     // 여러 경로 시도
     const possiblePaths = [
-      `${process.env.PUBLIC_URL}/maps/${mapKey}.json`,
       `/maps/${mapKey}.json`,
       `./maps/${mapKey}.json`,
       `${window.location.origin}/maps/${mapKey}.json`,

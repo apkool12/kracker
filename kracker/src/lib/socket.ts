@@ -2,7 +2,7 @@
 import { io } from "socket.io-client";
 
 // 서버 주소는 필요에 따라 .env로 뺄 수 있음
-export const socket = io("http://localhost:4000", {
+export const socket = io(import.meta.env.VITE_SOCKET_URL ?? "http://localhost:4000", {
   transports: ["websocket"],
 });
 

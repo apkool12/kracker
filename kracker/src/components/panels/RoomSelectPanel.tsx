@@ -1,7 +1,7 @@
 import React from "react";
 import RoomSelectButton from "../buttons/RoomSelectButton";
-import { ReactComponent as PublicIcon} from "../../assets/images/publicIcon.svg";
-import { ReactComponent as PrivateIcon} from "../../assets/images/privateIcon.svg";
+import PublicIcon from "../../assets/images/publicIcon.svg?react";
+import PrivateIcon from "../../assets/images/privateIcon.svg?react";
 
 export type Visibility = "public" | "private";
 
