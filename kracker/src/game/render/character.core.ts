@@ -27,8 +27,8 @@ export function createGradientColors(baseColor: number): {
   return {
     light: adjustBrightness(1.2), // 밝은 부분 (하이라이트)
     base: baseColor, // 기본 색상
-    dark: adjustBrightness(1.5), // 어두운 부분 (그림자)
-    shadow: adjustBrightness(1.2), // 깊은 그림자
+    dark: adjustBrightness(0.74), // 어두운 부분 (그림자)
+    shadow: adjustBrightness(0.52), // 깊은 그림자 / 외곽선
   };
 }
 
@@ -87,37 +87,24 @@ export function renderBodyWithGradient(
   radius: number,
   colors: CharacterColors
 ) {
-  const gradientColors = createGradientColors(colors.head);
-
+  const c = createGradientColors(colors.head);
   body.clear();
 
-  // 메인 원 (기본 색상)
-  body.fillStyle(gradientColors.base);
+  // 그림자색 원 위에 기본색 원을 왼쪽 위로 살짝 옮겨 겹침 → 오른쪽 아래 음영 초승달
+  body.fillStyle(c.dark);
   body.fillCircle(x, y, radius);
+  body.fillStyle(c.base);
+  body.fillCircle(x - radius * 0.1, y - radius * 0.12, radius * 0.82);
 
-  // 🎨 입체감을 위한 그라데이션과 하이라이트
-  const time = Date.now() * 0.002; // 천천히 변화하는 시간
+  // 하이라이트 (왼쪽 위 광택)
+  body.fillStyle(c.light, 0.55);
+  body.fillEllipse(x - radius * 0.38, y - radius * 0.45, radius * 0.55, radius * 0.34);
+  body.fillStyle(0xffffff, 0.35);
+  body.fillCircle(x - radius * 0.45, y - radius * 0.5, radius * 0.1);
 
-  // 메인 하이라이트 (위쪽 반원)
-  body.fillStyle(gradientColors.light, 0.8);
-  body.fillCircle(x, y - radius * 0.25, radius * 0.7);
-
-  // 중간 하이라이트 (더 작은 반원)
-  body.fillStyle(gradientColors.light, 0.6);
-  body.fillCircle(x, y - radius * 0.15, radius * 0.5);
-
-  // 작은 하이라이트 (가장 밝은 부분)
-  body.fillStyle(gradientColors.light, 0.9);
-  body.fillCircle(x, y - radius * 0.1, radius * 0.3);
-
-  // 그림자 효과 (아래쪽)
-  body.fillStyle(gradientColors.shadow, 0.4);
-  body.fillCircle(x, y + radius * 0.3, radius * 0.6);
-
-  // 측면 그림자 (입체감 강화)
-  body.fillStyle(gradientColors.dark, 0.3);
-  body.fillCircle(x - radius * 0.2, y, radius * 0.4);
-  body.fillCircle(x + radius * 0.2, y, radius * 0.4);
+  // 외곽선 (어두운 배경에서도 실루엣이 또렷하게)
+  body.lineStyle(2, c.shadow, 0.9);
+  body.strokeCircle(x, y, radius);
 }
 
 /**

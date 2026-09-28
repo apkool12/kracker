@@ -127,6 +127,8 @@ export function updateFace(
     colors: CharacterColors;
     facing?: "left" | "right";
     scaleY?: number;
+    aimX?: number;
+    aimY?: number;
   }
 ) {
   const { face } = refs;
@@ -140,49 +142,62 @@ export function updateFace(
   const x = 0;
   const y = 0;
 
-  // 얼굴 색상 (몸통보다 약간 밝게)
   const faceColors = createGradientColors(colors.head);
 
-  // 얼굴 배경 (밝은 색상으로)
-  face.fillStyle(faceColors.light);
-  face.fillCircle(x + 3, y, 8);
-
-  // 눈 (입체감 있는 검은색)
-  face.fillStyle(0x000000);
-  face.fillCircle(x, y - 5, 2.5); // 왼쪽 눈
-  face.fillCircle(x + 6, y - 5, 2.5); // 오른쪽 눈
-
-  // 눈 하이라이트 (흰색 반사)
-  face.fillStyle(0xffffff);
-  face.fillCircle(x - 0.5, y - 6, 1);
-  face.fillCircle(x + 5.5, y - 6, 1);
-
-  // 입 (체력에 따라 변화, 원래 로직으로)
-  if (health > 50) {
-    // 건강할 때: 미소 (웃기)
-    face.lineStyle(2, 0x000000);
-    face.beginPath();
-    face.arc(x + 3, y + 2, 4, 0, Math.PI);
-    face.strokePath();
-  } else if (health > 20) {
-    // 중간: 직선
-    face.lineStyle(2, 0x000000);
-    face.beginPath();
-    face.moveTo(x, y + 2);
-    face.lineTo(x + 6, y + 2);
-    face.strokePath();
-  } else {
-    // 위험: 찡그림
-    face.lineStyle(2, 0x000000);
-    face.beginPath();
-    face.arc(x + 3, y + 4, 4, Math.PI, Math.PI * 2);
-    face.strokePath();
+  // 조준 방향(얼굴 좌표계) → 눈동자 오프셋
+  let lx = 1;
+  let ly = 0;
+  if (params.aimX !== undefined && params.aimY !== undefined) {
+    const ax = (params.aimX - params.x) * dir;
+    const ay = params.aimY - params.y;
+    const d = Math.hypot(ax, ay) || 1;
+    lx = ax / d;
+    ly = ay / d;
   }
+  const blink = blinkAmount(refs);
+
+  // 볼터치
+  face.fillStyle(0xff7a8a, 0.35);
+  face.fillCircle(x - 1, y + 3, 2.6);
+  face.fillCircle(x + 13, y + 3, 2.6);
+
+  // 눈 (흰자 + 눈동자, 깜빡임은 세로로 납작)
+  const eyes = [x + 1.5, x + 10];
+  for (const ex of eyes) {
+    const ey = y - 5;
+    face.fillStyle(0xffffff);
+    face.fillEllipse(ex, ey, 7, 8 * (1 - blink) + 0.8);
+    if (blink < 0.7) {
+      face.fillStyle(0x1b1b22);
+      face.fillCircle(ex + lx * 1.4, ey + ly * 1.6, 2.3 * (1 - blink * 0.6));
+      face.fillStyle(0xffffff, 0.9);
+      face.fillCircle(ex + lx * 1.4 - 0.8, ey + ly * 1.6 - 0.9, 0.8);
+    }
+  }
+
+  // 입 (체력에 따라 변화)
+  face.lineStyle(1.8, faceColors.shadow);
+  face.beginPath();
+  if (health > 50) {
+    face.arc(x + 6, y + 2, 3.2, 0.15 * Math.PI, 0.85 * Math.PI); // 미소
+  } else if (health > 20) {
+    face.moveTo(x + 3.5, y + 4);
+    face.lineTo(x + 8.5, y + 4); // 무표정
+  } else {
+    face.arc(x + 6, y + 6.5, 3.2, 1.15 * Math.PI, 1.85 * Math.PI); // 찡그림
+  }
+  face.strokePath();
 
   // 벽잡기 집중한 표정
   if (isWallGrabbing) {
-    face.fillStyle(0x000000);
-    face.fillRect(x - 2, y - 8, 4, 2); // 찡그린 이마
+    // 집중한 눈썹
+    face.lineStyle(1.6, faceColors.shadow);
+    face.beginPath();
+    face.moveTo(x - 1.5, y - 11);
+    face.lineTo(x + 4, y - 10);
+    face.moveTo(x + 7, y - 10);
+    face.lineTo(x + 12.5, y - 11);
+    face.strokePath();
   }
 }
 
@@ -204,6 +219,8 @@ export function updatePose(
     isWallGrabbing?: boolean;
     scaleOverride?: { x: number; y: number }; // 옵션
     velocityY?: number; // 있으면 착지 찌그러짐/공중 늘어남 적용
+    aimX?: number; // 눈동자가 바라볼 월드 좌표
+    aimY?: number;
     isGrounded?: boolean;
     facing?: "left" | "right";
   }
@@ -258,5 +275,25 @@ export function updatePose(
     colors,
     facing,
     scaleY,
+    aimX: params.aimX,
+    aimY: params.aimY,
   });
+}
+
+// 캐릭터별 깜빡임: 3~5초마다 0.14초 동안 감았다 뜸 (0=뜸, 1=감음)
+const blinkState = new WeakMap<object, { next: number }>();
+function blinkAmount(key: object): number {
+  const now = performance.now();
+  let st = blinkState.get(key);
+  if (!st) {
+    st = { next: now + 1000 + Math.random() * 3000 };
+    blinkState.set(key, st);
+  }
+  const t = now - st.next;
+  if (t < 0) return 0;
+  if (t > 140) {
+    st.next = now + 3000 + Math.random() * 2000;
+    return 0;
+  }
+  return Math.sin((t / 140) * Math.PI);
 }

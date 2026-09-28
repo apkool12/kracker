@@ -2,6 +2,7 @@
 import { motionTime, blendKeyframe } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { drawGun } from "./gun";
+import { createGradientColors } from "./character.core";
 import {
   getIdleKeyframeAtTime,
   getWalkingKeyframeAtTime,
@@ -37,7 +38,7 @@ export function drawCurve(
 ) {
   graphics.moveTo(startX, startY);
 
-  const steps = 210;
+  const steps = 16;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const x =
@@ -92,13 +93,15 @@ function drawCurvedLimb(
   thickness: number = 3
 ) {
   graphics.clear();
+  color = limbShade(color);
+  thickness = Math.max(thickness, 4.5);
   graphics.lineStyle(thickness, color);
   graphics.beginPath();
 
   // 3차 베지어 곡선으로 부드러운 곡선 생성
   graphics.moveTo(startX, startY);
 
-  const steps = 50;
+  const steps = 16;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const x =
@@ -115,6 +118,10 @@ function drawCurvedLimb(
   }
 
   graphics.strokePath();
+  // 둥근 관절 + 발
+  graphics.fillStyle(color);
+  graphics.fillCircle(startX, startY, thickness / 2);
+  graphics.fillEllipse(endX, endY + 0.5, thickness * 1.5, thickness);
 }
 
 /**
@@ -799,10 +806,20 @@ function drawLimb(
   color: number
 ) {
   graphics.clear();
-  graphics.lineStyle(3, color);
+  color = limbShade(color);
+  graphics.lineStyle(4, color);
   graphics.beginPath();
   drawCurve(graphics, startX, startY, controlX, controlY, endX, endY);
   graphics.strokePath();
+  // 둥근 어깨 + 손
+  graphics.fillStyle(color);
+  graphics.fillCircle(startX, startY, 2);
+  graphics.fillCircle(endX, endY, 3.2);
+}
+
+// 팔다리는 몸통보다 한 톤 어둡게 (형태 구분)
+function limbShade(color: number): number {
+  return createGradientColors(color).dark;
 }
 
 /**

@@ -527,6 +527,8 @@ export class RemotePlayerManager {
         velocityY: remotePlayer.interpolation.targetVY,
         isGrounded: networkState.isGrounded,
         facing,
+        aimX: (remotePlayer as any).pose?.mouseX,
+        aimY: (remotePlayer as any).pose?.mouseY,
       });
 
       // 2. 로컬과 동일한 팔다리 렌더링 시스템 사용
