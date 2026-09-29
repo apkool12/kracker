@@ -10,6 +10,32 @@ import {
 
 // 그림자 캔버스 해상도 배율 (0.5 = 절반)
 const SHADOW_RES = 0.5;
+// 그림자 레이어 기본 투명도 (두 레이어가 교차할 때 합이 이 값)
+const SHADOW_ALPHA = 0.5;
+
+/** 폴리곤들을 흰색 마스크로 한 번에 채움 (블렌드 없는 단일 패스) */
+function fillPolygons(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  polygons: Array<{ points: number[] }>,
+  camera: CameraInfo
+): void {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(SHADOW_RES, 0, 0, SHADOW_RES, 0, 0);
+  ctx.fillStyle = "#ffffff";
+  ctx.globalCompositeOperation = "source-over";
+  ctx.beginPath();
+  for (const polygon of polygons) {
+    const pts = polygon.points;
+    if (pts.length < 6) continue;
+    ctx.moveTo(pts[0]! - camera.x, pts[1]! - camera.y);
+    for (let j = 2; j < pts.length; j += 2) ctx.lineTo(pts[j]! - camera.x, pts[j + 1]! - camera.y);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
 
 export class ShadowRenderer {
   private scene: Phaser.Scene;
@@ -90,7 +116,7 @@ export class ShadowRenderer {
     this.shadowImage.setDepth(this.config.depth);
     this.shadowImage.setScrollFactor(0, 0); // 화면 고정
     this.shadowImage.setScale(1 / SHADOW_RES); // 절반 해상도로 그려 확대 (비용↓, 가장자리 부드럽게)
-    this.shadowImage.setAlpha(0.5); // 🔧 적절한 투명도
+    this.shadowImage.setAlpha(SHADOW_ALPHA);
   }
 
   /** 그림자 업데이트 */
@@ -99,6 +125,11 @@ export class ShadowRenderer {
       this.clear();
       return;
     }
+
+    this.updatePointLayer(
+      platforms.map((p) => this.normalizePlatform(p as any)),
+      camera
+    );
 
     const now = Date.now();
     const cameraHash = this.getCameraHash(camera);
@@ -230,15 +261,76 @@ export class ShadowRenderer {
     }
   }
 
-  /** 점광원 설정: 광원이 있거나 바뀌면 스로틀 없이 다음 update 에서 다시 그림 */
-  private pointLightKey = "";
+  // ===== 점광원 그림자 레이어 (기본 그림자와 크로스페이드) =====
+  private pointTarget: { x: number; y: number } | null = null;
+  private pointPos: { x: number; y: number } | null = null; // 부드럽게 따라가는 위치
+  private pointStrength = 0; // 0 = 기본 그림자만, 1 = 점광원 그림자만
+  private pointDrawnKey = "";
+  private pointLastMs = 0;
+  private pointCalc?: ShadowCalculator;
+  private pCanvas?: HTMLCanvasElement;
+  private pCtx?: CanvasRenderingContext2D | null;
+  private pTexture?: Phaser.Textures.CanvasTexture | null;
+  private pImage?: Phaser.GameObjects.Image;
+
+  /** 점광원 목표 (null 이면 기본 방향광 그림자로 서서히 복귀) */
   public setPointLight(p: { x: number; y: number } | null): void {
-    const key = p ? `${Math.round(p.x)},${Math.round(p.y)}` : "";
-    if (key === this.pointLightKey) return;
-    this.pointLightKey = key;
-    this.calculator.setPointLight(p);
-    this.lastUpdateTime = 0;
-    this.lastCameraHash = "";
+    this.pointTarget = p;
+  }
+
+  private ensurePointLayer(): boolean {
+    if (this.pImage) return true;
+    const w = this.shadowCanvas?.width;
+    const h = this.shadowCanvas?.height;
+    if (!w || !h) return false;
+    this.pCanvas = document.createElement("canvas");
+    this.pCanvas.width = w;
+    this.pCanvas.height = h;
+    this.pCtx = this.pCanvas.getContext("2d");
+    const key = "point_shadow_texture";
+    if (this.scene.textures.exists(key)) this.scene.textures.remove(key);
+    this.pTexture = this.scene.textures.addCanvas(key, this.pCanvas);
+    this.pImage = this.scene.add.image(0, 0, key);
+    this.pImage.setOrigin(0, 0).setDepth(this.config.depth).setScrollFactor(0, 0);
+    this.pImage.setScale(1 / SHADOW_RES).setAlpha(0).setTint(this.config.light.color);
+    this.pointCalc = new ShadowCalculator(this.config.light);
+    return true;
+  }
+
+  /** 매 프레임: 세기/위치를 부드럽게 보간하고 두 레이어 투명도를 교차 */
+  private updatePointLayer(platforms: Platform[], camera: CameraInfo): void {
+    if (!this.ensurePointLayer()) return;
+    const now = performance.now();
+    const dt = this.pointLastMs ? Math.min(0.1, (now - this.pointLastMs) / 1000) : 0;
+    this.pointLastMs = now;
+
+    const target = this.pointTarget;
+    // 나타날 땐 빠르게(~80ms), 사라질 땐 천천히(~250ms)
+    const tau = target ? 0.08 : 0.25;
+    this.pointStrength += ((target ? 1 : 0) - this.pointStrength) * (1 - Math.exp(-dt / tau));
+    if (target) {
+      if (!this.pointPos || this.pointStrength < 0.02) this.pointPos = { ...target };
+      else {
+        const k = 1 - Math.exp(-dt / 0.06); // 광원이 바뀌어도 방향이 튀지 않게
+        this.pointPos.x += (target.x - this.pointPos.x) * k;
+        this.pointPos.y += (target.y - this.pointPos.y) * k;
+      }
+    }
+
+    const base = SHADOW_ALPHA;
+    this.shadowImage?.setAlpha(base * (1 - this.pointStrength));
+    this.pImage!.setAlpha(base * this.pointStrength);
+    this.pImage!.setVisible(this.pointStrength > 0.005 && this.config.enabled);
+    if (this.pointStrength <= 0.005 || !this.pointPos || !this.pCtx) return;
+
+    const key = `${Math.round(this.pointPos.x)},${Math.round(this.pointPos.y)},${Math.round(camera.x)},${Math.round(camera.y)}`;
+    if (key === this.pointDrawnKey) return;
+    this.pointDrawnKey = key;
+
+    this.pointCalc!.setPointLight(this.pointPos);
+    const result = this.pointCalc!.calculateShadows(platforms, camera);
+    fillPolygons(this.pCtx, this.pCanvas!, result.polygons, camera);
+    this.pTexture?.refresh();
   }
 
   /** 빛 각도 변경 */
@@ -347,6 +439,9 @@ export class ShadowRenderer {
       this.shadowImage.destroy();
       this.shadowImage = null;
     }
+    this.pImage?.destroy();
+    if (this.pTexture) this.scene.textures.remove("point_shadow_texture");
+    this.pTexture = null;
 
     if (this.shadowTexture) {
       this.scene.textures.remove("unified_shadow_texture");
