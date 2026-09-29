@@ -22,7 +22,8 @@ type MotionState = {
 const motion = new WeakMap<object, MotionState>();
 
 /** 이번 프레임 애니메이션 샘플 시각을 돌려준다 (상태/보폭 갱신 포함) */
-export function motionTime(key: object, type: string, t: number, x: number): number {
+export function motionTime(key: object, rawType: string, t: number, x: number): number {
+  const type = rawType === "walking" || rawType === "running" ? "move" : rawType;
   let st = motion.get(key);
   if (!st) {
     st = { type, since: t, lastT: t, lastX: x, stride: 0, fromT: -1 };
@@ -40,7 +41,7 @@ export function motionTime(key: object, type: string, t: number, x: number): num
   st.lastX = x;
   st.lastT = t;
 
-  if (type === "walking" || type === "running") return st.stride;
+  if (type === "move") return st.stride;
   if (type === "fall" || type.startsWith("jump")) return t - st.since;
   return t; // idle/crouch/wallGrab: 호흡 사인파는 절대 시간
 }
@@ -114,4 +115,72 @@ export function squashStretch(
     sy: 1 + stretch - st.squash,
     sink: st.squash * 20, // 눌린 만큼 몸을 내려 발이 땅에 붙어 보이게
   };
+}
+
+// ===== 절차적 보행 (걷기~달리기 연속) =====
+// 좌표는 몸통 중심 기준, 가만히 선 자세(idle)와 같은 다리 길이(발 y=25, 바닥)를 유지해 전환이 튀지 않게 한다.
+const STRIDE_PX = 110; // 한 걸음 주기(두 발) 동안 이동 거리
+const GROUND_Y = 25; // 몸통 중심에서 바닥까지 (반지름 20 + 5)
+
+const gaitBody = new WeakMap<object, { bob: number; lean: number }>();
+
+/** 이번 프레임 보행 포즈. phaseDist 는 motionTime 이 준 누적 이동량, speed01 은 0~1 */
+export function gaitKeyframe(
+  key: object,
+  phaseDist: number,
+  speed01: number,
+  dir: 1 | -1
+): CharacterKeyframe {
+  const s = Math.min(1, Math.max(0, speed01));
+  const phase = (phaseDist * RUN_SPEED_REF) / STRIDE_PX; // 걸음 주기 수
+  const w = phase * Math.PI * 2;
+  const S = 4 + 9 * s; // 보폭
+  const L = 2 + 9 * s; // 발 들기
+  const A = 3 + 8 * s; // 팔 흔들기
+
+  // 몸 위아래 흔들림(한 주기에 두 번) + 속도만큼 앞으로 기울기
+  const bob = -Math.abs(Math.sin(w)) * (0.8 + 2.4 * s);
+  gaitBody.set(key, { bob, lean: dir * s * 2.5 });
+
+  const leg = (hipX: number, off: number): LimbKeyframe => {
+    const ph = w + off;
+    const swing = Math.max(0, Math.cos(ph)); // 앞으로 내딛는 구간에서만 발을 든다
+    const lift = L * swing * swing;
+    const hip = { x: dir * hipX, y: 10 + bob };
+    const foot = { x: hip.x + dir * (1 + S * Math.sin(ph)), y: GROUND_Y - lift };
+    const knee = {
+      x: (hip.x + foot.x) / 2 + dir * (4 + lift * 0.45),
+      y: (hip.y + foot.y) / 2 - lift * 0.2,
+    };
+    return { hip, knee, foot };
+  };
+  const arm = (shoulderX: number, off: number): LimbKeyframe => {
+    const ph = w + off + Math.PI; // 같은 쪽 다리와 반대로
+    const out = Math.sign(shoulderX);
+    const shoulder = { x: shoulderX, y: 0 + bob };
+    const hand = {
+      x: shoulderX + out * (17 - 2 * s) + dir * A * Math.sin(ph),
+      y: 11 - 2.5 * s * Math.abs(Math.cos(ph)) + bob * 0.5,
+    };
+    const elbow = { x: (shoulder.x + hand.x) / 2 + out * 2, y: (shoulder.y + hand.y) / 2 + 3 };
+    return { hip: shoulder, knee: elbow, foot: hand };
+  };
+
+  return {
+    time: phase % 1,
+    leftLeg: leg(-3, 0),
+    rightLeg: leg(9, Math.PI),
+    leftArm: arm(-10, Math.PI),
+    rightArm: arm(10, 0),
+  };
+}
+
+/** 보행 중 몸 흔들림/기울기 (정지하면 서서히 0으로) */
+export function gaitBodyOffset(key: object): { bob: number; lean: number } {
+  const g = gaitBody.get(key);
+  if (!g) return { bob: 0, lean: 0 };
+  // 다음 프레임에 보행이 아니면 자연스럽게 사라지도록 감쇠
+  g.bob *= 0.8;
+  g.lean *= 0.85;
+  return g;
 }

@@ -1,6 +1,6 @@
 // src/game/render/character.pose.ts
 import { drawAccessory } from "./accessory";
-import { squashStretch } from "../animations/motion";
+import { squashStretch, gaitBodyOffset } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { renderBodyWithGradient, createGradientColors } from "./character.core";
 
@@ -251,9 +251,10 @@ export function updatePose(
       ? { sx: 1, sy: 1, sink: 0 }
       : squashStretch(refs, velocityY, isGrounded);
 
-  // 살짝 좌우/상하 흔들림 (+ 착지 시 눌린 만큼 가라앉음)
-  const finalX = x + Math.sin(wobble) * 1 + wallLean;
-  const finalY = y + Math.cos(wobble * 1.5) * 0.5 + crouchOffset + ss.sink;
+  // 살짝 좌우/상하 흔들림 (+ 착지 시 눌린 만큼 가라앉음, 걸음에 맞춘 들썩임/앞기울기)
+  const gait = gaitBodyOffset(refs);
+  const finalX = x + Math.sin(wobble) * 1 + wallLean + gait.lean;
+  const finalY = y + Math.cos(wobble * 1.5) * 0.5 + crouchOffset + ss.sink + gait.bob;
 
   body.x = finalX;
   body.y = finalY;

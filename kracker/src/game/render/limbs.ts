@@ -1,5 +1,5 @@
 // src/game/render/limbs.ts
-import { motionTime, blendKeyframe } from "../animations/motion";
+import { motionTime, blendKeyframe, gaitKeyframe } from "../animations/motion";
 import { CharacterColors, GfxRefs } from "../types/player.types";
 import { drawGun } from "./gun";
 import { createGradientColors } from "./character.core";
@@ -90,38 +90,29 @@ function drawCurvedLimb(
   endX: number,
   endY: number,
   color: number,
-  thickness: number = 3
+  _thickness: number = 3
 ) {
   graphics.clear();
-  color = limbShade(color);
-  thickness = Math.max(thickness, 4.5);
-  graphics.lineStyle(thickness, color);
-  graphics.beginPath();
-
-  // 3차 베지어 곡선으로 부드러운 곡선 생성
-  graphics.moveTo(startX, startY);
-
-  const steps = 16;
-  for (let i = 1; i <= steps; i++) {
+  const pts: Pt[] = [];
+  const steps = 14;
+  for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const x =
-      Math.pow(1 - t, 3) * startX +
-      3 * Math.pow(1 - t, 2) * t * control1X +
-      3 * (1 - t) * Math.pow(t, 2) * control2X +
-      Math.pow(t, 3) * endX;
-    const y =
-      Math.pow(1 - t, 3) * startY +
-      3 * Math.pow(1 - t, 2) * t * control1Y +
-      3 * (1 - t) * Math.pow(t, 2) * control2Y +
-      Math.pow(t, 3) * endY;
-    graphics.lineTo(x, y);
+    const u = 1 - t;
+    pts.push({
+      x: u * u * u * startX + 3 * u * u * t * control1X + 3 * u * t * t * control2X + t * t * t * endX,
+      y: u * u * u * startY + 3 * u * u * t * control1Y + 3 * u * t * t * control2Y + t * t * t * endY,
+    });
   }
-
-  graphics.strokePath();
-  // 둥근 관절 + 발
-  graphics.fillStyle(color);
-  graphics.fillCircle(startX, startY, thickness / 2);
-  graphics.fillEllipse(endX, endY + 0.5, thickness * 1.5, thickness);
+  const shade = createGradientColors(color);
+  // 다리: 엉덩이 쪽 굵고 발목 쪽 가늘게 + 외곽선
+  taperedStroke(graphics, pts, 6, 4.2, shade.dark, shade.shadow);
+  // 신발: 무릎이 굽은 쪽(앞)을 향하는 둥근 발
+  const fwd = Math.sign(control1X - (startX + endX) / 2) || 1;
+  const fx = endX + fwd * 2.5;
+  graphics.fillStyle(shade.shadow);
+  graphics.fillEllipse(fx, endY + 0.6, 11, 6.6);
+  graphics.fillStyle(shade.dark);
+  graphics.fillEllipse(fx, endY, 9, 5);
 }
 
 /**
@@ -501,8 +492,13 @@ export function drawLimbs(
     wallGrabDirection,
   };
 
-  // 현재 키프레임 가져오기
-  const currentKeyframe = blendKeyframe(refs, getCurrentKeyframe(animationState), currentTime);
+  // 걷기/달리기는 속도에 비례하는 절차적 보행, 나머지는 키프레임
+  const moving = animationType === "walking" || animationType === "running";
+  const moveDir: 1 | -1 = velocityX !== 0 ? (velocityX > 0 ? 1 : -1) : facing === "left" ? -1 : 1;
+  const rawKeyframe = moving
+    ? gaitKeyframe(refs, animationState.currentTime, Math.abs(velocityX) / 300, moveDir)
+    : getCurrentKeyframe(animationState);
+  const currentKeyframe = blendKeyframe(refs, rawKeyframe, currentTime);
 
   // 크라우치 오프셋 적용
   const crouchOffset = crouchHeight * baseCrouchOffset;
@@ -806,21 +802,62 @@ function drawLimb(
   color: number
 ) {
   graphics.clear();
-  color = limbShade(color);
-  graphics.lineStyle(4, color);
-  graphics.beginPath();
-  drawCurve(graphics, startX, startY, controlX, controlY, endX, endY);
-  graphics.strokePath();
-  // 둥근 어깨 + 손
-  graphics.fillStyle(color);
-  graphics.fillCircle(startX, startY, 2);
-  graphics.fillCircle(endX, endY, 3.2);
+  const pts: Pt[] = [];
+  const steps = 12;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    pts.push({
+      x: u * u * startX + 2 * u * t * controlX + t * t * endX,
+      y: u * u * startY + 2 * u * t * controlY + t * t * endY,
+    });
+  }
+  const shade = createGradientColors(color);
+  // 팔: 어깨 쪽 굵고 손목 쪽 가늘게 + 외곽선, 둥근 손
+  taperedStroke(graphics, pts, 3.6, 3, shade.dark, shade.shadow);
+  graphics.fillStyle(shade.shadow);
+  graphics.fillCircle(endX, endY, 3.9);
+  graphics.fillStyle(shade.dark);
+  graphics.fillCircle(endX, endY, 3);
 }
 
-// 팔다리는 몸통보다 한 톤 어둡게 (형태 구분)
-function limbShade(color: number): number {
-  return createGradientColors(color).dark;
+type Pt = { x: number; y: number };
+
+/**
+ * 곡선을 따라 굵기가 w0 → w1 로 변하는 면으로 채운다 (외곽선 먼저, 본색 나중).
+ * 끝은 둥글게 막는다.
+ */
+function taperedStroke(g: any, pts: Pt[], w0: number, w1: number, color: number, outline: number) {
+  const n = pts.length;
+  const ribbon = (extra: number): Pt[] => {
+    const left: Pt[] = [];
+    const right: Pt[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = pts[Math.max(0, i - 1)]!;
+      const b = pts[Math.min(n - 1, i + 1)]!;
+      let tx = b.x - a.x;
+      let ty = b.y - a.y;
+      const len = Math.hypot(tx, ty) || 1;
+      tx /= len;
+      ty /= len;
+      const hw = (w0 + (w1 - w0) * (i / (n - 1))) / 2 + extra;
+      left.push({ x: pts[i]!.x - ty * hw, y: pts[i]!.y + tx * hw });
+      right.push({ x: pts[i]!.x + ty * hw, y: pts[i]!.y - tx * hw });
+    }
+    return left.concat(right.reverse());
+  };
+  const p0 = pts[0]!;
+  const p1 = pts[n - 1]!;
+  g.fillStyle(outline);
+  g.fillPoints(ribbon(0.9), true);
+  g.fillCircle(p0.x, p0.y, w0 / 2 + 0.9);
+  g.fillCircle(p1.x, p1.y, w1 / 2 + 0.9);
+  g.fillStyle(color);
+  g.fillPoints(ribbon(0), true);
+  g.fillCircle(p0.x, p0.y, w0 / 2);
+  g.fillCircle(p1.x, p1.y, w1 / 2);
 }
+
 
 /**
  * 애니메이션 상태 업데이트를 위한 헬퍼 함수들

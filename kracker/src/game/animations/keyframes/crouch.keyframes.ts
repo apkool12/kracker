@@ -9,13 +9,13 @@ const STANDING_KEYFRAME: CharacterKeyframe = {
   time: 0.0,
   leftLeg: {
     hip: { x: -10, y: 20 },
-    knee: { x: -8, y: 30 },
-    foot: { x: -10, y: 40 },
+    knee: { x: -9, y: 21 },
+    foot: { x: -10, y: 22 },
   },
   rightLeg: {
     hip: { x: 10, y: 20 },
-    knee: { x: 8, y: 30 },
-    foot: { x: 10, y: 40 },
+    knee: { x: 9, y: 21 },
+    foot: { x: 10, y: 22 },
   },
   leftArm: {
     hip: { x: -10, y: 0 },
@@ -39,13 +39,13 @@ function createCrouchedKeyframe(facing: FacingDirection): CharacterKeyframe {
       // 뒷다리 (짧고 올라간 위치)
       hip: { x: -10, y: 18 },
       knee: { x: -12, y: 15 }, // 무릎이 더 많이 구부러짐
-      foot: { x: -15, y: 28 },
+      foot: { x: -15, y: 22 },
     },
     rightLeg: {
       // 앞다리 (짧고 올라간 위치)
       hip: { x: 10, y: 18 },
       knee: { x: 15, y: 15 }, // 무릎이 더 많이 구부러짐
-      foot: { x: 18, y: 28 },
+      foot: { x: 18, y: 22 },
     },
     leftArm: {
       hip: { x: -10, y: 3 },
@@ -73,13 +73,13 @@ function createCrouchedKeyframe(facing: FacingDirection): CharacterKeyframe {
         // 왼다리를 오른다리와 같게 복제 (X축 대칭)
         hip: { x: -10, y: 18 },
         knee: { x: -15, y: 15 }, // 오른다리 무릎과 대칭
-        foot: { x: -18, y: 28 }, // 오른다리 발과 대칭
+        foot: { x: -18, y: 22 }, // 오른다리 발과 대칭
       },
       rightLeg: {
         // 오른다리를 왼다리와 같게 복제 (X축 대칭)
         hip: { x: 10, y: 18 },
         knee: { x: 12, y: 15 }, // 왼다리 무릎과 대칭
-        foot: { x: 15, y: 28 }, // 왼다리 발과 대칭
+        foot: { x: 15, y: 22 }, // 왼다리 발과 대칭
       },
       leftArm: {
         hip: { x: -10, y: 3 },
@@ -111,12 +111,12 @@ export function createCrouchDownAnimation(facing: FacingDirection): Animation {
         leftLeg: {
           hip: { x: -10, y: 19 },
           knee: { x: -11, y: 18 },
-          foot: { x: -14, y: 32 },
+          foot: { x: -14, y: 22 },
         },
         rightLeg: {
           hip: { x: 10, y: 19 },
           knee: { x: 11, y: 18 },
-          foot: { x: 14, y: 32 },
+          foot: { x: 14, y: 22 },
         },
       },
       createCrouchedKeyframe(facing),
@@ -154,13 +154,13 @@ function createLandingCrouchKeyframe(
       // 뒷다리 (충격 흡수 - 짧고 올라간 위치)
       hip: { x: -10, y: 20 },
       knee: { x: -15, y: 13 }, // 무릎이 더 많이 구부러짐
-      foot: { x: -18, y: 30 },
+      foot: { x: -18, y: 22 },
     },
     rightLeg: {
       // 앞다리 (충격 흡수 - 짧고 올라간 위치)
       hip: { x: 10, y: 20 },
       knee: { x: 17, y: 13 }, // 무릎이 더 많이 구부러짐
-      foot: { x: 21, y: 30 },
+      foot: { x: 21, y: 22 },
     },
     leftArm: {
       hip: { x: -10, y: 5 },
@@ -188,13 +188,13 @@ function createLandingCrouchKeyframe(
         // 왼다리를 오른다리와 같게 복제 (X축 대칭)
         hip: { x: -10, y: 20 },
         knee: { x: -17, y: 13 }, // 오른다리 무릎과 대칭
-        foot: { x: -21, y: 30 }, // 오른다리 발과 대칭
+        foot: { x: -21, y: 22 }, // 오른다리 발과 대칭
       },
       rightLeg: {
         // 오른다리를 왼다리와 같게 복제 (X축 대칭)
         hip: { x: 10, y: 20 },
         knee: { x: 15, y: 13 }, // 왼다리 무릎과 대칭
-        foot: { x: 18, y: 30 }, // 왼다리 발과 대칭
+        foot: { x: 18, y: 22 }, // 왼다리 발과 대칭
       },
       leftArm: {
         hip: { x: -10, y: 5 },
@@ -228,12 +228,12 @@ export function createLandingCrouchAnimation(
         leftLeg: {
           hip: { x: -10, y: 21 },
           knee: { x: -13, y: 17 },
-          foot: { x: -18, y: 34 },
+          foot: { x: -18, y: 22 },
         },
         rightLeg: {
           hip: { x: 10, y: 21 },
           knee: { x: 13, y: 17 },
-          foot: { x: 18, y: 34 },
+          foot: { x: 18, y: 22 },
         },
       },
       createLandingCrouchKeyframe(facing),

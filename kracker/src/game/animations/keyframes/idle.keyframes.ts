@@ -12,14 +12,14 @@ const IDLE_RIGHT_BASE_KEYFRAME: CharacterKeyframe = {
   leftLeg: {
     // 뒷다리 (왼쪽)
     hip: { x: -2, y: 10 },
-    knee: { x: -8, y: 30 }, // 거의 직선
-    foot: { x: -10, y: 40 },
+    knee: { x: -8, y: 18 }, // 거의 직선
+    foot: { x: -10, y: 25 },
   },
   rightLeg: {
     // 앞다리 (오른쪽)
     hip: { x: 10, y: 10 },
-    knee: { x: 15, y: 28 }, // 무릎이 약간 앞으로
-    foot: { x: 12, y: 40 },
+    knee: { x: 15, y: 17 }, // 무릎이 약간 앞으로
+    foot: { x: 12, y: 25 },
   },
   leftArm: {
     hip: { x: -10, y: 0 }, // 어깨
@@ -43,14 +43,14 @@ const IDLE_LEFT_BASE_KEYFRAME: CharacterKeyframe = {
   leftLeg: {
     // 앞다리 (왼쪽)
     hip: { x: -2, y: 10 },
-    knee: { x: -15, y: 28 }, // 무릎이 약간 앞으로
-    foot: { x: -12, y: 40 },
+    knee: { x: -15, y: 17 }, // 무릎이 약간 앞으로
+    foot: { x: -12, y: 25 },
   },
   rightLeg: {
     // 뒷다리 (오른쪽)
     hip: { x: 10, y: 10 },
-    knee: { x: 8, y: 30 }, // 거의 직선
-    foot: { x: 10, y: 40 },
+    knee: { x: 8, y: 18 }, // 거의 직선
+    foot: { x: 10, y: 25 },
   },
   leftArm: {
     hip: { x: -10, y: 0 },

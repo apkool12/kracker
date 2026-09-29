@@ -49,8 +49,13 @@ export default class GameManager {
         arcade: {
           debug: false,
           gravity: { y: 0, x: 0 }, // 커스텀 중력 사용
+          // 물리를 화면 프레임마다 진행 (기본 60Hz 고정 스텝이면 120Hz 화면에서 총알이 끊겨 보임)
+          // 빠른 총알의 벽 관통은 CollisionSystem 의 CCD 스윕이 막음
+          fixedStep: false,
         },
       },
+      // 고주사율(120/144Hz) 화면에서 제 프레임을 내도록
+      fps: { target: 120, smoothStep: true },
       scale: {
         mode: Phaser.Scale.FIT, // RESIZE 대신 FIT 모드 사용
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -71,6 +76,7 @@ export default class GameManager {
       render: {
         antialias: true,
         pixelArt: false,
+        powerPreference: "high-performance",
       },
     };
 

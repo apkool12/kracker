@@ -214,7 +214,8 @@ export class Bullet {
   }
 
   private createBulletTexture(): string {
-    const key = `bullet_texture_${this._id}`;
+    // 모양은 반지름에만 의존 → 반지름별로 한 번 만들어 공유 (발사마다 캔버스 생성/업로드 방지)
+    const key = `bullet_texture_r${this.config.radius}`;
 
     if (this.scene.textures.exists(key)) {
       return key;
@@ -930,14 +931,7 @@ export class Bullet {
 
     // 메인 스프라이트 제거
     if (this.sprite && this.sprite.scene) {
-      const textureKey = `bullet_texture_${this._id}`;
-      if (this.scene.textures.exists(textureKey)) {
-        try {
-          this.scene.textures.remove(textureKey);
-        } catch (error) {
-          
-        }
-      }
+      // 텍스처는 반지름별 공유라 여기서 지우지 않음
       this.sprite.destroy();
     }
 

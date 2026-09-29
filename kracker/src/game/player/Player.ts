@@ -338,24 +338,20 @@ export default class Player {
       this.isCrouching = false;
     }
 
-    // 부드러운 전환
-    if (this.isCrouching) {
-      this.crouchHeight = Math.min(
-        1,
-        this.crouchHeight + this.crouchTransitionSpeed
-      );
-    } else {
-      this.crouchHeight = Math.max(
-        0,
-        this.crouchHeight - this.crouchTransitionSpeed
-      );
-    }
+    // 부드러운 전환 (프레임레이트와 무관: 시간 상수 60ms)
+    const k = 1 - Math.exp(-this.lastDeltaMs / 60);
+    this.crouchHeight += ((this.isCrouching ? 1 : 0) - this.crouchHeight) * k;
+    if (Math.abs(this.crouchHeight - (this.isCrouching ? 1 : 0)) < 0.002)
+      this.crouchHeight = this.isCrouching ? 1 : 0;
   }
 
   // ========== 메인 업데이트 루프 ==========
 
+  private lastDeltaMs = 16.7;
+
   update(deltaMs: number): PlayerState {
     const dt = deltaMs / 1000;
+    this.lastDeltaMs = deltaMs;
 
     // 1) 무적 처리
     this.updateInvulnerability(deltaMs * 3);
