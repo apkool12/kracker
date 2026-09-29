@@ -419,7 +419,23 @@ const RoundsGame: React.FC = () => {
     }
 
     setGameState(loadedGameState);
-    
+
+    // 4. 새로고침 등으로 연결이 바뀌어 이 방의 플레이어가 아니면 빈 게임에 갇히지 않게 홈으로
+    const roomId = loadedGameState.room?.roomId;
+    const verify = () =>
+      socket.emit("room:info", { roomId }, (res: any) => {
+        const inRoom =
+          res?.ok && res.room?.players?.some((p: any) => p.id === socket.id);
+        if (!inRoom) {
+          sessionStorage.removeItem("gameState");
+          navigate("/", { replace: true });
+        }
+      });
+    if (socket.connected) verify();
+    else socket.once("connect", verify);
+    return () => {
+      socket.off("connect", verify);
+    };
   }, [location.state, navigate]);
 
   // 게임 초기화 함수
