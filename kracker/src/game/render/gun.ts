@@ -89,7 +89,7 @@ export function getGunPosition(params: {
   // 8. 🔥 중요: 검증 - Y좌표가 이상하게 고정되었는지 확인
   const expectedYRange = [basePlayerY - 50, basePlayerY + 50]; // 합리적인 Y 범위
   if (gunTipY < expectedYRange[0] || gunTipY > expectedYRange[1]) {
-    console.warn(
+    console.debug(
       `⚠️  총구 Y좌표가 이상함: ${gunTipY.toFixed(2)} (예상 범위: ${
         expectedYRange[0]
       } ~ ${expectedYRange[1]})`

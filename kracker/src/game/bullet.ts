@@ -1210,7 +1210,7 @@ export class ShootingSystem {
         runChildUpdate: false,
         allowGravity: true,
       });
-      console.warn("⚠️ CollisionSystem 미연결, 임시 bulletGroup 사용");
+      console.debug("⚠️ CollisionSystem 미연결, 임시 bulletGroup 사용");
     }
   }
 

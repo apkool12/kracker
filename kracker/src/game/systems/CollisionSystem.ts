@@ -154,7 +154,7 @@ export class CollisionSystem {
       if (prevX === undefined || prevY === undefined) {
         // 스폰 위치가 벽 내부인지 확인
         if (this.isInsideAnyPlatform(curX, curY, this.getBulletRadius(b))) {
-          console.warn(
+          console.debug(
             `⚠️ 총알이 벽 내부에서 스폰됨! 즉시 제거: (${curX.toFixed(
               1
             )}, ${curY.toFixed(1)})`

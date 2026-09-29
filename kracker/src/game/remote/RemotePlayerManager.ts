@@ -88,7 +88,7 @@ export class RemotePlayerManager {
   public handleRemotePlayerMovement(playerId: string, movement: any): void {
     const remotePlayer = this.remotePlayers.get(playerId);
     if (!remotePlayer) {
-      console.warn(`⚠️ 원격 플레이어 ${playerId}를 찾을 수 없습니다`);
+      console.debug(`⚠️ 원격 플레이어 ${playerId}를 찾을 수 없습니다`);
       return;
     }
 
