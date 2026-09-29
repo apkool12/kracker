@@ -15,36 +15,34 @@ export function drawGun(
 ) {
   gunGfx.clear();
 
-  // 몸통색과 구분되는 금속 총 (길이/각도는 기존과 동일 → 총구 위치 계산 영향 없음)
-  const METAL = 0x2b2f36;
-  const EDGE = 0x5d6570;
+  // ROUNDS 풍 장난감 총: 둥근 통통한 몸체 + 짧은 뭉툭한 총구 + 둥근 손잡이, 단색.
+  // 그래픽 자체를 손 위치로 옮기고 조준각으로 회전 (왼쪽을 겨누면 위아래 반전해 손잡이가 아래로)
+  // 총구 끝(x = gunLength)은 기존과 동일 → 발사 위치 계산 영향 없음
   const gunLength = 30 + shootRecoil * 3;
-  const cos = Math.cos(gunAngle);
-  const sin = Math.sin(gunAngle);
-  const at = (d: number, off = 0) => ({
-    x: armEndX + cos * d - sin * off,
-    y: armEndY + sin * d + cos * off,
-  });
-  const line = (w: number, c: number, a: { x: number; y: number }, b: { x: number; y: number }) => {
-    gunGfx.lineStyle(w, c);
-    gunGfx.beginPath();
-    gunGfx.moveTo(a.x, a.y);
-    gunGfx.lineTo(b.x, b.y);
-    gunGfx.strokePath();
-  };
+  const kick = shootRecoil * 1.5; // 반동 시 살짝 뒤로
+  const flip = Math.cos(gunAngle) < 0 ? -1 : 1;
+  gunGfx.setPosition(armEndX, armEndY);
+  gunGfx.setRotation(gunAngle);
+  gunGfx.setScale(1, flip);
 
-  // 손잡이
-  const side = isLeft ? -1 : 1;
-  line(4.5, METAL, at(2), at(-1, side * 9));
-  // 몸체(두꺼움) → 총신(얇음)
-  line(7, METAL, at(-2), at(gunLength * 0.55));
-  line(4, METAL, at(gunLength * 0.55), at(gunLength));
-  // 윗면 하이라이트
-  line(1.5, EDGE, at(0, -side * 2.5), at(gunLength * 0.5, -side * 2.5));
-  // 총구
-  const tip = at(gunLength);
-  gunGfx.fillStyle(EDGE);
-  gunGfx.fillCircle(tip.x, tip.y, 2.4);
+  const BODY = 0x3b404c;
+  const SHADE = 0x2c3039;
+  const SHINE = 0x6a7282;
+
+  // 손잡이 (몸체 뒤쪽 아래, 둥글게)
+  gunGfx.fillStyle(SHADE);
+  gunGfx.fillRoundedRect(-3 - kick, -1, 7.5, 10, 3.2);
+  // 몸체 (통통한 캡슐)
+  gunGfx.fillStyle(BODY);
+  gunGfx.fillRoundedRect(-5 - kick, -5.5, 25, 9, 4.5);
+  // 뭉툭한 총구
+  gunGfx.fillRoundedRect(17 - kick, -3.8, gunLength - 17 + kick, 5.6, 2.8);
+  // 은은한 광택 한 줄
+  gunGfx.fillStyle(SHINE, 0.7);
+  gunGfx.fillRoundedRect(-2 - kick, -4.3, 15, 2, 1);
+  // 캐릭터 색 포인트 (작은 동그라미)
+  gunGfx.fillStyle(colors.head);
+  gunGfx.fillCircle(10 - kick, -1, 1.8);
 }
 
 /**
