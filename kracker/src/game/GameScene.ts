@@ -470,7 +470,7 @@ export default class GameScene extends Phaser.Scene {
             remotePlayer.networkState.health = event.data.health;
           }
         } else {
-          console.warn(`⚠️ 체력바 표시할 플레이어를 찾을 수 없음: ${playerId}`);
+          console.debug(`⚠️ 체력바 표시할 플레이어를 찾을 수 없음: ${playerId}`);
         }
         break;
 
